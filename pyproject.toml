@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis-agent-security"
+version = "0.1.0"
+description = "Real-time behavioral monitoring middleware for multi-agent LLM systems (injection shield, PEP, sandbox routing, intent scrubber)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "AEGIS" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "scikit-learn>=1.3",
+    "joblib>=1.3",
+]
+
+[project.optional-dependencies]
+langgraph = ["langgraph>=0.2", "langchain-core>=0.3"]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools]
+packages = ["aegis", "aegis.sanitizer", "aegis.scrubber", "aegis.monitor",
+            "aegis.sandbox", "aegis.integrations", "harness"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::UserWarning", "ignore::FutureWarning"]

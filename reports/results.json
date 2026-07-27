@@ -1,0 +1,104 @@
+{
+  "injection": {
+    "n_test": 2666,
+    "auc": 0.999998874437289,
+    "act_threshold": 0.3,
+    "block_threshold": 0.8,
+    "detection_at_act": 0.9977494373593399,
+    "fpr_at_act": 0.0,
+    "precision_at_act": 1.0,
+    "detection_at_block": 0.9789947486871718,
+    "fpr_at_block": 0.0,
+    "precision_at_block": 1.0,
+    "latency_ms": {
+      "mean": 1.5294010067545307,
+      "p50": 1.3951394998912292,
+      "p95": 2.3323647500319566,
+      "p99": 3.6570026999015655,
+      "max": 42.74511599987818
+    },
+    "throughput_per_s_1thread": 653.8507530618491,
+    "lofo": {
+      "direct_override": 1.0,
+      "fake_system": 1.0,
+      "fake_new_policy": 1.0,
+      "exfil": 0.7325,
+      "tool_hijack": 0.79,
+      "jailbreak": 1.0,
+      "delimiter": 1.0,
+      "obfuscated": 0.815,
+      "embedded_note": 1.0,
+      "multilingual": 1.0
+    }
+  },
+  "toolguard": {
+    "n": 6000,
+    "attack_ratio": 0.4,
+    "authorized_total": 3616,
+    "authorized_executed": 3594,
+    "utility": 0.9939159292035398,
+    "unauthorized_total": 2384,
+    "unauthorized_executed_baseline": 2384,
+    "unauthorized_executed_protected": 0,
+    "unauthorized_blocked_rate": 1.0,
+    "reduction_vs_baseline": 1.0,
+    "by_kind": {
+      "benign": {
+        "executed": 3594,
+        "total": 3616
+      },
+      "rbac_violation": {
+        "executed": 0,
+        "total": 506
+      },
+      "trust_floor": {
+        "executed": 0,
+        "total": 463
+      },
+      "injected_hijack": {
+        "executed": 0,
+        "total": 481
+      },
+      "injection_exfil": {
+        "executed": 0,
+        "total": 489
+      },
+      "direct_exfil": {
+        "executed": 0,
+        "total": 445
+      }
+    }
+  },
+  "sandbox": {
+    "requests": 5200,
+    "exfil_attempts": 1011,
+    "exfil_leaks_protected": 0,
+    "exfil_leaks_unprotected_baseline": 1011,
+    "exfil_attempts_blocked": 528,
+    "throughput_req_per_s": 695.8994245115107,
+    "projected_daily_capacity": 60125710.277794525,
+    "tier_distribution": {
+      "restricted": 751,
+      "read_only": 1793,
+      "trusted": 583,
+      "no_net": 36
+    },
+    "protected_wall_s": 7.472344158999931
+  },
+  "concurrency": {
+    "n_docs": 20000,
+    "workers": 8,
+    "naive_peak_mem_mb": 2.907331,
+    "opt_peak_mem_mb": 0.272883,
+    "mem_reduction": 0.9061396861932818,
+    "naive_throughput": 23224.041897896517,
+    "opt_throughput": 482399.520820201,
+    "throughput_gain": 19.77155746364261,
+    "naive_concurrent_throughput": 19297.776491854034,
+    "opt_concurrent_throughput": 104522.33985760187,
+    "concurrency_gain": 4.416289275695714,
+    "naive_mem_per_1k": 0.14536655,
+    "opt_mem_per_1k": 0.013644149999999999
+  },
+  "_wall_seconds": 51.8406389769998
+}
