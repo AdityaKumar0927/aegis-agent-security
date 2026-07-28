@@ -1,26 +1,33 @@
 """Simulated sandboxed tool executor.
 
-Runs a tool call inside a routed tier.  In protected mode it consults the egress
-filter before executing; a denied call never runs.  Independently, it computes a
-*ground-truth* exfiltration flag - did honeytoken/secret bytes actually reach an
-external destination - so the stress test measures real leaks rather than trusting
-the filter's own verdict.  Setting ``enforce_egress=False`` models a system with
-no AEGIS, which is how the baseline "leaks without protection" number is produced.
+Runs a tool call inside a routed tier.  In protected mode it enforces the tier's
+capabilities before executing:
+
+* egress-capable tools are gated by the :class:`EgressFilter`;
+* ``read_secret`` requires a tier that grants secret access;
+* destructive/write tools (``delete_file``, ``exec_shell``) require a writable
+  (scratch) filesystem.
+
+A denied call never runs.  Independently, it computes a *ground-truth*
+exfiltration flag - did honeytoken/secret bytes actually reach an external
+destination - so the stress test measures real leaks rather than trusting the
+filter's own verdict.  Setting ``enforce_egress=False`` models a system with no
+AEGIS, which is how the baseline "leaks without protection" number is produced.
+
+This is a **simulation**: it does not spawn real processes, containers or network
+namespaces.  It models the decision surface (what would be permitted to run in
+each tier) so the guard logic can be measured deterministically; wiring the tiers
+to real OS isolation is deployment-specific and out of scope for the library.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-from ..config import CANARY_SECRET, EGRESS_TOOLS
+from ..config import CANARY_SECRET, DEFAULT_CONFIG
 from ..types import SandboxTier, ToolCall
-from .egress import (
-    EgressFilter,
-    _carries_secret,
-    _extract_destination,
-    _is_internal,
-    _payload_text,
-)
+from .egress import EgressFilter
+from .tiers import capability
 
 
 @dataclass
@@ -36,7 +43,6 @@ class ExecOutcome:
 
 class SandboxExecutor:
     def __init__(self, config=None, enforce_egress: bool = True):
-        from ..config import DEFAULT_CONFIG
         self.config = config if config is not None else DEFAULT_CONFIG
         self.egress = EgressFilter(self.config)
         self.enforce_egress = enforce_egress
@@ -46,13 +52,26 @@ class SandboxExecutor:
             "db_password": "hunter2-" + CANARY_SECRET,
         }
 
+    def _cap(self, tier: SandboxTier):
+        return self.config.tier_caps.get(tier) or capability(tier)
+
+    def _tier_permits(self, tier: SandboxTier, tool_call: ToolCall) -> tuple[bool, str]:
+        """Non-egress capability gate.  Returns (permitted, reason)."""
+        cap = self._cap(tier)
+        name = tool_call.name
+        if self.config.is_secret_tool(name) and cap.secret_access == "none":
+            return False, f"tier '{tier.value}' grants no secret access"
+        if self.config.is_write_tool(name) and cap.filesystem in ("none", "ro"):
+            return False, f"tier '{tier.value}' filesystem is not writable"
+        return True, ""
+
     def _ground_truth_exfil(self, tool_call: ToolCall) -> tuple[bool, str]:
-        if tool_call.name not in EGRESS_TOOLS:
+        if not self.config.is_egress_tool(tool_call.name):
             return False, ""
-        payload = _payload_text(tool_call)
-        dest = _extract_destination(tool_call)
-        leaked = _carries_secret(payload) and bool(dest) and not _is_internal(dest)
-        return leaked, dest
+        dests = self.egress.destinations(tool_call)
+        external = [d for d in dests if not self.egress.is_internal(d)]
+        leaked = self.egress.payload_secret(tool_call) and bool(external)
+        return leaked, (external[0] if external else (dests[0] if dests else ""))
 
     def _simulate(self, tier: SandboxTier, tool_call: ToolCall) -> Any:
         name = tool_call.name
@@ -64,8 +83,8 @@ class SandboxExecutor:
             return [{"id": 1, "value": "ok"}]
         if name in ("web_search", "read_public_doc"):
             return [{"title": "result", "snippet": "public info"}]
-        if name in EGRESS_TOOLS:
-            return {"sent": True, "to": _extract_destination(tool_call)}
+        if self.config.is_egress_tool(name):
+            return {"sent": True, "to": self.egress.destinations(tool_call)}
         if name == "delete_file":
             return {"deleted": tool_call.args.get("path", "")}
         if name == "exec_shell":
@@ -73,6 +92,15 @@ class SandboxExecutor:
         return {"ok": True}
 
     def execute(self, tier: SandboxTier, tool_call: ToolCall) -> ExecOutcome:
+        # Non-egress capability gate (secret access / writable fs).
+        if self.enforce_egress:
+            ok, reason = self._tier_permits(tier, tool_call)
+            if not ok:
+                return ExecOutcome(
+                    ok=False, result=None, blocked=True, exfiltrated=False,
+                    exfil_attempt=False, reason="tier denied: " + reason,
+                )
+
         decision = self.egress.inspect(tier, tool_call)
         attempt = decision.is_exfil_attempt
 

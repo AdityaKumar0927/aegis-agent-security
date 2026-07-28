@@ -90,6 +90,13 @@ SENSITIVITY_TRUST_FLOOR: dict[str, float] = {
 # are subject to egress inspection.
 EGRESS_TOOLS: set[str] = {"http_post", "send_email", "transfer_funds"}
 
+# Tools that mutate the filesystem / execute code.  They require a writable
+# (scratch) tier, so the router must not cap them into a read-only tier.
+WRITE_TOOLS: set[str] = {"delete_file", "exec_shell"}
+
+# Non-egress tools that read secrets; require a tier that grants secret access.
+SECRET_TOOLS: set[str] = {"read_secret"}
+
 # Domain suffixes / hosts considered internal (not an exfiltration destination).
 INTERNAL_DOMAINS: tuple[str, ...] = (".internal.corp", "localhost")
 
@@ -196,6 +203,8 @@ class AegisConfig:
 
     # --- egress / sandbox ---
     egress_tools: set[str] = field(default_factory=lambda: set(EGRESS_TOOLS))
+    write_tools: set[str] = field(default_factory=lambda: set(WRITE_TOOLS))
+    secret_tools: set[str] = field(default_factory=lambda: set(SECRET_TOOLS))
     tier_caps: dict[SandboxTier, TierCapability] = field(
         default_factory=lambda: dict(TIER_CAPS)
     )
@@ -208,8 +217,10 @@ class AegisConfig:
     # --- behavioural monitor ---
     rate_window_s: float = 1.0
     rate_limit: int = 20
-    max_agents: int = 100_000       # cap on tracked per-agent profiles (DoS bound)
-    profile_ttl_s: float = 3600.0   # idle profiles evicted after this many seconds
+    max_agents: int = 100_000        # cap on tracked per-agent profiles (DoS bound)
+    profile_ttl_s: float = 3600.0    # idle profiles evicted after this many seconds
+    sensitive_read_window_s: float = 300.0  # read-then-exfiltrate window
+    block_window_s: float = 60.0     # window over which recent blocks count
 
     # --- resource bounds ---
     max_content_length: int = 100_000   # untrusted content longer than this is truncated
@@ -259,6 +270,12 @@ class AegisConfig:
     def is_egress_tool(self, tool: str) -> bool:
         return tool in self.egress_tools
 
+    def is_write_tool(self, tool: str) -> bool:
+        return tool in self.write_tools
+
+    def is_secret_tool(self, tool: str) -> bool:
+        return tool in self.secret_tools
+
     def is_internal_host(self, host: str) -> bool:
         host = host.lower()
         return any(host == d or host.endswith(d) for d in self.internal_domains)
@@ -273,6 +290,8 @@ class AegisConfig:
             sensitivity_trust_floor=dict(self.sensitivity_trust_floor),
             thresholds=replace(self.thresholds),
             egress_tools=set(self.egress_tools),
+            write_tools=set(self.write_tools),
+            secret_tools=set(self.secret_tools),
             tier_caps=dict(self.tier_caps),
             known_bad_destinations=set(self.known_bad_destinations),
             secret_patterns=list(self.secret_patterns),
@@ -296,7 +315,8 @@ class AegisConfig:
                 raise AegisConfigError(f"unknown config key '{key}'")
             if key == "role_tool_matrix":
                 value = {k: set(v) for k, v in value.items()}
-            elif key in ("egress_tools", "known_bad_destinations"):
+            elif key in ("egress_tools", "write_tools", "secret_tools",
+                         "known_bad_destinations"):
                 value = set(value)
             elif key == "internal_domains":
                 value = tuple(value)

@@ -61,9 +61,14 @@ class SandboxRouter:
         else:
             base = SandboxTier.NO_NET
 
-        # 2) Highly sensitive non-egress tools never need broad egress; cap them
-        #    at READ_ONLY so a compromised step can't reach the network.
-        if sensitivity in (SENSITIVITY_HIGH, SENSITIVITY_CRITICAL) and not needs_egress:
+        # 2) Highly sensitive non-egress *read* tools never need broad egress or a
+        #    writable fs; cap them at READ_ONLY so a compromised step can't reach
+        #    the network.  Write/exec tools are exempt - they need a scratch fs to
+        #    function, so capping them read-only would just break legitimate use;
+        #    their risk is handled by the risk->isolation rule below instead.
+        needs_write = self.config.is_write_tool(tool)
+        if (sensitivity in (SENSITIVITY_HIGH, SENSITIVITY_CRITICAL)
+                and not needs_egress and not needs_write):
             base = _min_tier(base, SandboxTier.READ_ONLY)
 
         tier = base

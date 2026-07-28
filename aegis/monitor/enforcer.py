@@ -50,9 +50,15 @@ class PolicyEnforcementPoint:
         check = self.policy.check(request.role, tool)
         if not check.ok:
             self.behavior.record_block(request.agent_id)
-            return EnforcementOutcome(Verdict.BLOCK, 0.0, [check.reason])
+            if check.hard_block:
+                return EnforcementOutcome(Verdict.BLOCK, 0.0, [check.reason])
+            # A soft policy failure (e.g. a medium-sensitivity tool below its
+            # trust floor) runs, but only in full isolation.
+            return EnforcementOutcome(
+                Verdict.QUARANTINE, 0.0, [check.reason + " -> quarantine"],
+                force_min_isolation=True)
 
-        # --- behavioral anomaly ---------------------------------------- #
+        # --- behavioral anomaly (scores only; no baseline commit yet) --- #
         anomaly: AnomalyResult = self.behavior.observe(request.agent_id, request.tool_call, now=request.ts)
         reasons.extend(anomaly.reasons)
         score = anomaly.score
@@ -81,16 +87,21 @@ class PolicyEnforcementPoint:
                 [f"anomaly {score:.2f} on {sensitivity} tool '{tool}'"] + reasons)
 
         if score >= th.anomaly_quarantine:
+            # Suspicious-but-allowed: runs isolated, and does NOT train the
+            # behavioural baseline.
             return EnforcementOutcome(
                 Verdict.QUARANTINE, score,
                 [f"anomaly {score:.2f} -> quarantine"] + reasons,
                 force_min_isolation=True)
 
-        # Egress tools always run under at least mild scrutiny.
-        if tool in EGRESS_TOOLS and injection_score >= th.injection_sanitize:
-            return EnforcementOutcome(
-                Verdict.SANITIZE, score,
-                [f"egress tool '{tool}' - scrub content first"] + reasons)
+        # Moderate injection on a low/medium tool: scrub the content before the
+        # (legitimate) tool runs.  High/critical tools were already blocked above.
+        if injection_score >= th.injection_sanitize:
+            self.behavior.record_allow(request.agent_id, request.tool_call)
+            reason = (f"egress tool '{tool}' - scrub content first"
+                      if tool in EGRESS_TOOLS
+                      else f"injection {injection_score:.2f} on '{tool}' -> scrub content")
+            return EnforcementOutcome(Verdict.SANITIZE, score, [reason] + reasons)
 
-        self.behavior.record_allow(request.agent_id)
+        self.behavior.record_allow(request.agent_id, request.tool_call)
         return EnforcementOutcome(Verdict.ALLOW, score, reasons or ["ok"])

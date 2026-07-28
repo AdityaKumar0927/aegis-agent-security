@@ -25,6 +25,10 @@ if TYPE_CHECKING:  # pragma: no cover
 
 AUDIT_LOGGER_NAME = "aegis.audit"
 audit_logger = logging.getLogger(AUDIT_LOGGER_NAME)
+# Library convention: stay silent unless the host application configures a
+# handler (or calls configure_audit_logging).  Without this, Python's
+# "last resort" handler would print WARNING+ records to stderr uninvited.
+audit_logger.addHandler(logging.NullHandler())
 
 AuditSink = Callable[[dict[str, Any]], None]
 
