@@ -13,13 +13,13 @@ All numbers below are **freshly measured** by `python -m harness.run_all` on a s
 | Capability | Metric | Result |
 |---|---|---|
 | **Indirect prompt-injection detection** | detection rate @ 0.00% FPR | **99.8%** (AUC 1.000) |
-| | inference latency (p50 / p95 / p99) | **1.4 / 2.3 / 3.7 ms** on CPU |
+| | inference latency (p50 / p95 / p99) | **1.8 / 3.7 / 5.7 ms** on CPU |
 | **Unauthorized tool-execution control** | reduction vs. no-enforcement | **100%** (2384 → 0) |
-| | utility retained on legitimate traffic | **99.4%** |
+| | utility retained on legitimate traffic | **99.9%** |
 | **Dynamic sandbox routing** | exfiltration incidents over 5,200 requests | **0** (baseline would leak 1,011) |
-| | throughput | ~700 req/s → ~60M/day capacity |
-| **Intent-scrubber optimisation** | peak memory (naive → optimised) | **−91%** (2.9 → 0.3 MB) |
-| | concurrent throughput (8 workers) | **+442%** |
+| | throughput (full guard, per core) | ~430 req/s → ~37M/day capacity |
+| **Intent-scrubber optimisation** | peak memory (naive → optimised) | **−92%** (2.8 → 0.2 MB) |
+| | concurrent throughput (8 workers) | **+448%** |
 
 These map one-to-one onto the four engineering goals: *reduce unauthorized API tool execution*, *high-detection / low-latency injection sanitization*, *sandbox routing with zero exfiltration under stress*, and *a memory/concurrency-optimised intent-scrubbing algorithm*.
 
@@ -92,7 +92,8 @@ Neutralises injected instructions in borderline content before it reaches the pl
 ## Quickstart
 
 ```bash
-pip install -r requirements.txt          # or: pip install -e ".[langgraph,dev]"
+pip install -e ".[langgraph]"     # core + LangGraph integration
+# or: pip install -e ".[dev]"      # everything (tests, ruff, mypy, langgraph)
 
 # 1) End-to-end LangGraph demo (runs offline, no API key)
 python -m aegis.integrations.langgraph_adapter
@@ -100,9 +101,13 @@ python -m aegis.integrations.langgraph_adapter
 # 2) Full benchmark suite → prints results, writes reports/RESULTS.md
 python -m harness.run_all
 
-# 3) Tests
+# 3) Tests / lint / types
 pytest -q
+ruff check aegis && mypy aegis
 ```
+
+The core library (`import aegis`) needs only numpy/scipy/scikit-learn/joblib;
+LangGraph is an optional extra used solely by the integration and its demo.
 
 Individual benchmarks: `python -m harness.bench_injection` · `bench_toolguard` · `stress_sandbox` · `bench_concurrency`.
 
@@ -159,6 +164,42 @@ tests/                  # 28 unit + end-to-end tests
 ```
 
 ---
+
+## Production readiness
+
+AEGIS is built to run as a guard in front of a real agent fleet, not just as a
+benchmark:
+
+- **Fail-closed by contract.** `AegisGateway.process` never propagates an
+  exception — any internal error returns a `BLOCK` decision with `error` set and
+  an `errors` counter bumped. An integrator cannot accidentally build a fail-open
+  guard.
+- **Structured audit trail.** Every decision is emitted on the `aegis.audit`
+  logger (WARNING for block/quarantine/exfiltration, ERROR on internal error),
+  ready for a SIEM. Attach a JSON-lines handler with
+  `aegis.audit.configure_audit_logging()`, or pass an `audit_sink` callback to
+  the gateway. The library stays silent (NullHandler) until you opt in.
+- **Injectable, validated policy.** The RBAC matrix, tool sensitivity, trust
+  floors, egress/write/secret tool sets, tier capabilities, secret patterns,
+  known-bad hosts, internal domains, rate limits and content bounds all live on
+  `AegisConfig`. Load from a file (`AegisConfig.from_file`), environment
+  (`from_env`), or a dict; everything is range-checked (`AegisConfigError`).
+  Each gateway owns a private copy, so tuning one never leaks into another.
+- **Validated input.** Malformed requests raise a typed `AegisValidationError`
+  at the boundary instead of crashing deep in the pipeline.
+- **Bounded resources.** Untrusted content is length-capped before any regex
+  work; the per-agent behavioural store is LRU-bounded and TTL-evicted; the rate
+  window uses a monotonic clock a forged timestamp can't fool.
+- **Model supply-chain safety.** The pickled classifier is loaded only after a
+  `sha256` integrity check, with scikit-learn version and feature-dimension
+  validation; on any mismatch it fails closed and retrains in memory. Regenerate
+  the shipped artifact deterministically with `python -m aegis.sanitizer.train`.
+- **Typed, tested, CI'd.** Ships `py.typed`; ruff + mypy clean; 77 tests
+  (including thread-safety, egress-bypass and model-integrity regressions) run in
+  CI on Linux/Windows across Python 3.10–3.13.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full hardening history and
+[`SECURITY.md`](SECURITY.md) for the threat scope and reporting process.
 
 ## How the metrics are produced (and their limits)
 

@@ -1,7 +1,7 @@
 {
   "injection": {
     "n_test": 2666,
-    "auc": 0.999998874437289,
+    "auc": 0.9999988744372891,
     "act_threshold": 0.3,
     "block_threshold": 0.8,
     "detection_at_act": 0.9977494373593399,
@@ -11,13 +11,13 @@
     "fpr_at_block": 0.0,
     "precision_at_block": 1.0,
     "latency_ms": {
-      "mean": 1.5294010067545307,
-      "p50": 1.3951394998912292,
-      "p95": 2.3323647500319566,
-      "p99": 3.6570026999015655,
-      "max": 42.74511599987818
+      "mean": 2.002679370570752,
+      "p50": 1.7467000288888812,
+      "p95": 3.67257502512075,
+      "p99": 5.69422993576154,
+      "max": 14.464300009422004
     },
-    "throughput_per_s_1thread": 653.8507530618491,
+    "throughput_per_s_1thread": 499.33105353504783,
     "lofo": {
       "direct_override": 1.0,
       "fake_system": 1.0,
@@ -35,8 +35,8 @@
     "n": 6000,
     "attack_ratio": 0.4,
     "authorized_total": 3616,
-    "authorized_executed": 3594,
-    "utility": 0.9939159292035398,
+    "authorized_executed": 3611,
+    "utility": 0.9986172566371682,
     "unauthorized_total": 2384,
     "unauthorized_executed_baseline": 2384,
     "unauthorized_executed_protected": 0,
@@ -44,7 +44,7 @@
     "reduction_vs_baseline": 1.0,
     "by_kind": {
       "benign": {
-        "executed": 3594,
+        "executed": 3611,
         "total": 3616
       },
       "rbac_violation": {
@@ -75,30 +75,30 @@
     "exfil_leaks_protected": 0,
     "exfil_leaks_unprotected_baseline": 1011,
     "exfil_attempts_blocked": 528,
-    "throughput_req_per_s": 695.8994245115107,
-    "projected_daily_capacity": 60125710.277794525,
+    "throughput_req_per_s": 425.7633148189403,
+    "projected_daily_capacity": 36785950.40035644,
     "tier_distribution": {
-      "restricted": 751,
-      "read_only": 1793,
-      "trusted": 583,
-      "no_net": 36
+      "restricted": 909,
+      "read_only": 1667,
+      "trusted": 571,
+      "no_net": 16
     },
-    "protected_wall_s": 7.472344158999931
+    "protected_wall_s": 12.213358499924652
   },
   "concurrency": {
     "n_docs": 20000,
     "workers": 8,
-    "naive_peak_mem_mb": 2.907331,
-    "opt_peak_mem_mb": 0.272883,
-    "mem_reduction": 0.9061396861932818,
-    "naive_throughput": 23224.041897896517,
-    "opt_throughput": 482399.520820201,
-    "throughput_gain": 19.77155746364261,
-    "naive_concurrent_throughput": 19297.776491854034,
-    "opt_concurrent_throughput": 104522.33985760187,
-    "concurrency_gain": 4.416289275695714,
-    "naive_mem_per_1k": 0.14536655,
-    "opt_mem_per_1k": 0.013644149999999999
+    "naive_peak_mem_mb": 2.846723,
+    "opt_peak_mem_mb": 0.226972,
+    "mem_reduction": 0.9202690251211656,
+    "naive_throughput": 15401.471702564066,
+    "opt_throughput": 287125.3014529433,
+    "throughput_gain": 17.64271850106001,
+    "naive_concurrent_throughput": 14052.632307427908,
+    "opt_concurrent_throughput": 77071.76613638227,
+    "concurrency_gain": 4.484507418275212,
+    "naive_mem_per_1k": 0.14233615,
+    "opt_mem_per_1k": 0.0113486
   },
-  "_wall_seconds": 51.8406389769998
+  "_wall_seconds": 75.26513809990138
 }
