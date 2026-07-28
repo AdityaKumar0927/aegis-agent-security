@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from ..config import (
     SENSITIVITY_CRITICAL,
     SENSITIVITY_HIGH,
-    SENSITIVITY_TRUST_FLOOR,
     AegisConfig,
 )
 
@@ -38,7 +37,7 @@ class PolicyEngine:
 
         # 2) Trust floor by sensitivity.
         sensitivity = self.config.sensitivity(tool)
-        floor = SENSITIVITY_TRUST_FLOOR.get(sensitivity, 0.6)
+        floor = self.config.trust_floor(sensitivity)
         trust = self.config.trust(role)
         if trust < floor:
             hard = sensitivity in (SENSITIVITY_HIGH, SENSITIVITY_CRITICAL)

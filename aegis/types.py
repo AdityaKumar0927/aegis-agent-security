@@ -10,15 +10,26 @@ from __future__ import annotations
 
 import enum
 import itertools
+import os
+import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from .errors import AegisValidationError
+
 _id_counter = itertools.count(1)
+_id_lock = threading.Lock()
+# A short token unique to this process/run, so request IDs do not collide across
+# workers or restarts (the counter alone repeats from 1 in every process).
+_RUN_TOKEN = f"{os.getpid():x}{uuid.uuid4().hex[:6]}"
 
 
 def _next_id(prefix: str) -> str:
-    return f"{prefix}-{next(_id_counter):08d}"
+    with _id_lock:
+        n = next(_id_counter)
+    return f"{prefix}-{_RUN_TOKEN}-{n:08d}"
 
 
 class Verdict(str, enum.Enum):
@@ -83,6 +94,15 @@ class ToolCall:
     name: str
     args: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise AegisValidationError("ToolCall.name must be a non-empty string")
+        if self.args is None:
+            self.args = {}
+        elif not isinstance(self.args, dict):
+            raise AegisValidationError(
+                f"ToolCall.args must be a dict, got {type(self.args).__name__}")
+
     def flat_args(self) -> str:
         """Flatten args to a single string for content inspection."""
         parts = []
@@ -108,6 +128,36 @@ class AgentRequest:
     request_id: str = field(default_factory=lambda: _next_id("req"))
     ts: float = field(default_factory=time.time)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.agent_id, str) or not self.agent_id.strip():
+            raise AegisValidationError("AgentRequest.agent_id must be a non-empty string")
+        if not isinstance(self.role, str) or not self.role.strip():
+            raise AegisValidationError("AgentRequest.role must be a non-empty string")
+
+        # content: coerce None -> "" but reject non-string types (a list/dict
+        # here would silently skip sanitization or crash deep in the pipeline).
+        if self.content is None:
+            self.content = ""
+        elif not isinstance(self.content, str):
+            raise AegisValidationError(
+                f"AgentRequest.content must be a string, got {type(self.content).__name__}")
+
+        # source: accept a Source or its string value (a natural mistake since
+        # Source is a str-enum), but reject anything else.
+        if not isinstance(self.source, Source):
+            try:
+                self.source = Source(self.source)
+            except ValueError as exc:
+                valid = ", ".join(s.value for s in Source)
+                raise AegisValidationError(
+                    f"AgentRequest.source must be a Source (one of: {valid}), "
+                    f"got {self.source!r}") from exc
+
+        if self.tool_call is not None and not isinstance(self.tool_call, ToolCall):
+            raise AegisValidationError(
+                "AgentRequest.tool_call must be a ToolCall or None, got "
+                f"{type(self.tool_call).__name__}")
 
 
 @dataclass

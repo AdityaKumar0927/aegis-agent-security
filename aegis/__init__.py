@@ -24,7 +24,13 @@ Quick start::
     ))
     print(decision.summary())   # -> BLOCK ...
 """
-from .config import DEFAULT_CONFIG, AegisConfig
+from .config import DEFAULT_CONFIG, AegisConfig, Thresholds, TierCapability, default_config
+from .errors import (
+    AegisConfigError,
+    AegisError,
+    AegisValidationError,
+    ModelIntegrityError,
+)
 from .gateway import AegisGateway
 from .types import (
     AgentRequest,
@@ -39,7 +45,10 @@ from .types import (
 __all__ = [
     "AegisGateway",
     "AegisConfig",
+    "Thresholds",
+    "TierCapability",
     "DEFAULT_CONFIG",
+    "default_config",
     "AgentRequest",
     "ToolCall",
     "Decision",
@@ -47,6 +56,10 @@ __all__ = [
     "Source",
     "SandboxTier",
     "SanitizeResult",
+    "AegisError",
+    "AegisValidationError",
+    "AegisConfigError",
+    "ModelIntegrityError",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

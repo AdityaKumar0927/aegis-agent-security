@@ -1,13 +1,25 @@
 """Policy and tuning configuration for AEGIS.
 
 Everything an operator would realistically want to change for a given enterprise
-deployment lives here: the RBAC matrix, tool sensitivity, sandbox capabilities,
-egress allowlists, secret patterns and the decision thresholds.
+deployment lives on :class:`AegisConfig`: the RBAC matrix, tool sensitivity,
+sandbox capabilities, egress allowlists, secret patterns, behavioural limits and
+the decision thresholds.  The module-level constants below are only the
+*defaults* used to populate a fresh ``AegisConfig``; nothing in the runtime reads
+them directly, so an operator can override any of them per deployment without
+monkeypatching globals.
+
+Load a config from a JSON/TOML file with :meth:`AegisConfig.from_file`, layer in
+environment overrides with :meth:`AegisConfig.from_env`, and validate it with
+:meth:`AegisConfig.validate` (also run automatically on construction).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+import os
+from dataclasses import dataclass, field, replace
+from typing import Any
 
+from .errors import AegisConfigError
 from .types import SandboxTier
 
 # --------------------------------------------------------------------------- #
@@ -48,6 +60,10 @@ SENSITIVITY_MEDIUM = "medium"
 SENSITIVITY_HIGH = "high"
 SENSITIVITY_CRITICAL = "critical"
 
+_SENSITIVITY_LEVELS = (
+    SENSITIVITY_LOW, SENSITIVITY_MEDIUM, SENSITIVITY_HIGH, SENSITIVITY_CRITICAL,
+)
+
 TOOL_SENSITIVITY: dict[str, str] = {
     "web_search": SENSITIVITY_LOW,
     "read_public_doc": SENSITIVITY_LOW,
@@ -73,6 +89,9 @@ SENSITIVITY_TRUST_FLOOR: dict[str, float] = {
 # Tools that may transmit data off-box.  These are the exfiltration surface and
 # are subject to egress inspection.
 EGRESS_TOOLS: set[str] = {"http_post", "send_email", "transfer_funds"}
+
+# Domain suffixes / hosts considered internal (not an exfiltration destination).
+INTERNAL_DOMAINS: tuple[str, ...] = (".internal.corp", "localhost")
 
 # --------------------------------------------------------------------------- #
 # Sandbox tier capabilities
@@ -116,7 +135,9 @@ SECRET_PATTERNS: list[str] = [
     r"AEGIS-CANARY-[0-9a-f]+",
     r"sk-[A-Za-z0-9]{16,}",                  # API keys
     r"AKIA[0-9A-Z]{16}",                     # AWS access key id
+    r"gh[pousr]_[A-Za-z0-9]{20,}",           # GitHub tokens
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----",   # private keys
+    r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}",  # JWT
     r"\b\d{3}-\d{2}-\d{4}\b",                # US SSN
     r"\b(?:\d[ -]*?){13,16}\b",             # card-like number
     r"password\s*[:=]\s*\S+",
@@ -142,9 +163,25 @@ class Thresholds:
     anomaly_quarantine: float = 0.55  # >= -> force most restrictive sandbox
     anomaly_block: float = 0.85       # >= -> BLOCK for high/critical tools
 
+    def validate(self) -> None:
+        for name in ("injection_block", "injection_sanitize",
+                     "anomaly_quarantine", "anomaly_block"):
+            v = getattr(self, name)
+            if not isinstance(v, (int, float)) or not 0.0 <= float(v) <= 1.0:
+                raise AegisConfigError(f"threshold '{name}' must be in [0, 1], got {v!r}")
+        if self.injection_sanitize > self.injection_block:
+            raise AegisConfigError(
+                "injection_sanitize must be <= injection_block "
+                f"({self.injection_sanitize} > {self.injection_block})")
+        if self.anomaly_quarantine > self.anomaly_block:
+            raise AegisConfigError(
+                "anomaly_quarantine must be <= anomaly_block "
+                f"({self.anomaly_quarantine} > {self.anomaly_block})")
+
 
 @dataclass
 class AegisConfig:
+    # --- policy ---
     role_trust: dict[str, float] = field(default_factory=lambda: dict(ROLE_TRUST))
     role_tool_matrix: dict[str, set[str]] = field(
         default_factory=lambda: {k: set(v) for k, v in ROLE_TOOL_MATRIX.items()}
@@ -152,8 +189,60 @@ class AegisConfig:
     tool_sensitivity: dict[str, str] = field(
         default_factory=lambda: dict(TOOL_SENSITIVITY)
     )
+    sensitivity_trust_floor: dict[str, float] = field(
+        default_factory=lambda: dict(SENSITIVITY_TRUST_FLOOR)
+    )
     thresholds: Thresholds = field(default_factory=Thresholds)
 
+    # --- egress / sandbox ---
+    egress_tools: set[str] = field(default_factory=lambda: set(EGRESS_TOOLS))
+    tier_caps: dict[SandboxTier, TierCapability] = field(
+        default_factory=lambda: dict(TIER_CAPS)
+    )
+    known_bad_destinations: set[str] = field(
+        default_factory=lambda: set(KNOWN_BAD_DESTINATIONS)
+    )
+    secret_patterns: list[str] = field(default_factory=lambda: list(SECRET_PATTERNS))
+    internal_domains: tuple[str, ...] = INTERNAL_DOMAINS
+
+    # --- behavioural monitor ---
+    rate_window_s: float = 1.0
+    rate_limit: int = 20
+    max_agents: int = 100_000       # cap on tracked per-agent profiles (DoS bound)
+    profile_ttl_s: float = 3600.0   # idle profiles evicted after this many seconds
+
+    # --- resource bounds ---
+    max_content_length: int = 100_000   # untrusted content longer than this is truncated
+
+    # ------------------------------------------------------------------ #
+    def __post_init__(self) -> None:
+        self.validate()
+
+    def validate(self) -> "AegisConfig":
+        """Raise :class:`AegisConfigError` if the config is inconsistent."""
+        for role, t in self.role_trust.items():
+            if not 0.0 <= float(t) <= 1.0:
+                raise AegisConfigError(f"role_trust['{role}'] must be in [0, 1], got {t!r}")
+        for level, floor in self.sensitivity_trust_floor.items():
+            if level not in _SENSITIVITY_LEVELS:
+                raise AegisConfigError(f"unknown sensitivity level '{level}' in trust floor")
+            if not 0.0 <= float(floor) <= 1.0:
+                raise AegisConfigError(f"trust floor for '{level}' must be in [0, 1], got {floor!r}")
+        for tool, level in self.tool_sensitivity.items():
+            if level not in _SENSITIVITY_LEVELS:
+                raise AegisConfigError(f"tool_sensitivity['{tool}'] has unknown level '{level}'")
+        if self.rate_limit < 1:
+            raise AegisConfigError(f"rate_limit must be >= 1, got {self.rate_limit}")
+        if self.rate_window_s <= 0:
+            raise AegisConfigError(f"rate_window_s must be > 0, got {self.rate_window_s}")
+        if self.max_agents < 1:
+            raise AegisConfigError(f"max_agents must be >= 1, got {self.max_agents}")
+        if self.max_content_length < 1:
+            raise AegisConfigError(f"max_content_length must be >= 1, got {self.max_content_length}")
+        self.thresholds.validate()
+        return self
+
+    # ------------------------------------------------------------------ #
     def trust(self, role: str) -> float:
         return self.role_trust.get(role, 0.0)
 
@@ -161,8 +250,112 @@ class AegisConfig:
         # Unknown tools are treated as high sensitivity (fail closed).
         return self.tool_sensitivity.get(tool, SENSITIVITY_HIGH)
 
+    def trust_floor(self, sensitivity: str) -> float:
+        return self.sensitivity_trust_floor.get(sensitivity, 0.6)
+
     def is_permitted(self, role: str, tool: str) -> bool:
         return tool in self.role_tool_matrix.get(role, set())
 
+    def is_egress_tool(self, tool: str) -> bool:
+        return tool in self.egress_tools
 
+    def is_internal_host(self, host: str) -> bool:
+        host = host.lower()
+        return any(host == d or host.endswith(d) for d in self.internal_domains)
+
+    def copy(self) -> "AegisConfig":
+        """Return an independent deep-ish copy (own mutable containers)."""
+        return replace(
+            self,
+            role_trust=dict(self.role_trust),
+            role_tool_matrix={k: set(v) for k, v in self.role_tool_matrix.items()},
+            tool_sensitivity=dict(self.tool_sensitivity),
+            sensitivity_trust_floor=dict(self.sensitivity_trust_floor),
+            thresholds=replace(self.thresholds),
+            egress_tools=set(self.egress_tools),
+            tier_caps=dict(self.tier_caps),
+            known_bad_destinations=set(self.known_bad_destinations),
+            secret_patterns=list(self.secret_patterns),
+        )
+
+    # ------------------------------------------------------------------ #
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AegisConfig":
+        """Build a config from a plain dict (e.g. parsed JSON/TOML).
+
+        Unknown keys are rejected so a typo can't silently leave a security
+        setting at its default.
+        """
+        cfg = cls()
+        known = set(vars(cfg))
+        thresholds = data.get("thresholds")
+        for key, value in data.items():
+            if key == "thresholds":
+                continue
+            if key not in known:
+                raise AegisConfigError(f"unknown config key '{key}'")
+            if key == "role_tool_matrix":
+                value = {k: set(v) for k, v in value.items()}
+            elif key in ("egress_tools", "known_bad_destinations"):
+                value = set(value)
+            elif key == "internal_domains":
+                value = tuple(value)
+            setattr(cfg, key, value)
+        if isinstance(thresholds, dict):
+            cfg.thresholds = Thresholds(**thresholds)
+        return cfg.validate()
+
+    @classmethod
+    def from_file(cls, path: str) -> "AegisConfig":
+        """Load a config from a ``.json`` or ``.toml`` file."""
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        if path.endswith(".toml"):
+            import tomllib
+            data = tomllib.loads(raw.decode("utf-8"))
+        else:
+            data = json.loads(raw.decode("utf-8"))
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_env(cls, base: "AegisConfig | None" = None, prefix: str = "AEGIS_") -> "AegisConfig":
+        """Overlay a small set of scalar overrides from environment variables.
+
+        Recognised: ``AEGIS_INJECTION_BLOCK``, ``AEGIS_INJECTION_SANITIZE``,
+        ``AEGIS_ANOMALY_QUARANTINE``, ``AEGIS_ANOMALY_BLOCK`` (floats),
+        ``AEGIS_RATE_LIMIT``, ``AEGIS_MAX_AGENTS``, ``AEGIS_MAX_CONTENT_LENGTH``
+        (ints), ``AEGIS_RATE_WINDOW_S`` (float).
+        """
+        cfg = (base or cls()).copy()
+        th = cfg.thresholds
+
+        def _f(name: str, cur: float) -> float:
+            v = os.environ.get(prefix + name)
+            return float(v) if v is not None else cur
+
+        def _i(name: str, cur: int) -> int:
+            v = os.environ.get(prefix + name)
+            return int(v) if v is not None else cur
+
+        th.injection_block = _f("INJECTION_BLOCK", th.injection_block)
+        th.injection_sanitize = _f("INJECTION_SANITIZE", th.injection_sanitize)
+        th.anomaly_quarantine = _f("ANOMALY_QUARANTINE", th.anomaly_quarantine)
+        th.anomaly_block = _f("ANOMALY_BLOCK", th.anomaly_block)
+        cfg.rate_limit = _i("RATE_LIMIT", cfg.rate_limit)
+        cfg.rate_window_s = _f("RATE_WINDOW_S", cfg.rate_window_s)
+        cfg.max_agents = _i("MAX_AGENTS", cfg.max_agents)
+        cfg.max_content_length = _i("MAX_CONTENT_LENGTH", cfg.max_content_length)
+        return cfg.validate()
+
+
+def default_config() -> AegisConfig:
+    """A fresh, independent default config.  Prefer this over the module-level
+    ``DEFAULT_CONFIG`` when you intend to mutate the result."""
+    return AegisConfig()
+
+
+# Backwards-compatible shared default.  Do NOT mutate this instance; call
+# ``default_config()`` (or ``AegisConfig()``) for a private copy you can tune.
+# The gateway always takes a private copy, so mutating a gateway's config never
+# leaks into this one.
 DEFAULT_CONFIG = AegisConfig()
