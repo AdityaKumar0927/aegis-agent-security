@@ -36,7 +36,7 @@ class InjectionClassifier:
         )
         self._fitted = False
 
-    def fit(self, texts: list[str], labels: list[int]) -> "InjectionClassifier":
+    def fit(self, texts: list[str], labels: list[int]) -> InjectionClassifier:
         X = self.extractor.transform(texts)
         self.model.fit(X, np.asarray(labels))
         self._fitted = True
@@ -71,7 +71,7 @@ class InjectionClassifier:
             os.path.dirname(os.path.dirname(here)), "data", "injection_model.joblib")
         return repo if os.path.exists(repo) else pkg
 
-    def load_model(self, path: str, verify: bool = True) -> "InjectionClassifier":
+    def load_model(self, path: str, verify: bool = True) -> InjectionClassifier:
         """Load a pickled model.
 
         ``joblib.load`` unpickles arbitrary objects, so a tampered/untrusted model
@@ -116,7 +116,7 @@ class InjectionClassifier:
         return self
 
 
-def _fused_scores(clf: "InjectionClassifier", texts: list[str]) -> np.ndarray:
+def _fused_scores(clf: InjectionClassifier, texts: list[str]) -> np.ndarray:
     """The score the live system uses: max(model proba, deterministic rule)."""
     from .detectors import rule_evaluate
     p = clf.predict_proba(texts)

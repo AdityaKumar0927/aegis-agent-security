@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
     from .types import AgentRequest, Decision
@@ -33,7 +34,7 @@ audit_logger.addHandler(logging.NullHandler())
 AuditSink = Callable[[dict[str, Any]], None]
 
 
-def decision_record(request: "AgentRequest", decision: "Decision") -> dict[str, Any]:
+def decision_record(request: AgentRequest, decision: Decision) -> dict[str, Any]:
     """Build the JSON-serialisable audit record for a decision."""
     return {
         "request_id": decision.request_id,
@@ -55,7 +56,7 @@ def decision_record(request: "AgentRequest", decision: "Decision") -> dict[str, 
     }
 
 
-def emit(record: dict[str, Any], sink: Optional[AuditSink] = None) -> None:
+def emit(record: dict[str, Any], sink: AuditSink | None = None) -> None:
     """Log ``record`` at a severity derived from the verdict, then fan out to an
     optional caller-supplied sink.  Never raises: audit failures must not break
     the request path."""

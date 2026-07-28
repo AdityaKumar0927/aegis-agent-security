@@ -15,7 +15,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from .errors import AegisValidationError
 
@@ -123,7 +123,7 @@ class AgentRequest:
     agent_id: str
     role: str
     content: str = ""
-    tool_call: Optional[ToolCall] = None
+    tool_call: ToolCall | None = None
     source: Source = Source.USER
     request_id: str = field(default_factory=lambda: _next_id("req"))
     ts: float = field(default_factory=time.time)
@@ -179,11 +179,11 @@ class Decision:
     verdict: Verdict
     allowed: bool
     executed: bool = False
-    tier: Optional[SandboxTier] = None
+    tier: SandboxTier | None = None
     injection_score: float = 0.0
     anomaly_score: float = 0.0
     reasons: list[str] = field(default_factory=list)
-    sanitized_content: Optional[str] = None
+    sanitized_content: str | None = None
     result: Any = None
     latency_ms: float = 0.0
     stage_latencies: dict[str, float] = field(default_factory=dict)
@@ -199,7 +199,7 @@ class Decision:
 
     # Set to a short error tag when the gateway failed internally and returned a
     # fail-closed BLOCK; None on the normal path.
-    error: Optional[str] = None
+    error: str | None = None
 
     def summary(self) -> str:
         tier = self.tier.value if self.tier else "-"

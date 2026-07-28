@@ -131,7 +131,7 @@ class IntentScrubber:
             raise ValueError("cache_size must be >= 1")
         # Keyed on the text itself (not hash(text)) so a hash collision can never
         # return a different document's scrub result.
-        self._cache: "OrderedDict[str, ScrubResult]" = OrderedDict()
+        self._cache: OrderedDict[str, ScrubResult] = OrderedDict()
         self._cache_size = cache_size
         self._lock = threading.Lock()   # bounded cache is safe to share across agents
 

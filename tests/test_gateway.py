@@ -1,7 +1,6 @@
 """End-to-end tests for the AEGIS gateway."""
 from aegis import AegisGateway, AgentRequest, Source, ToolCall, Verdict
 
-
 GW = AegisGateway()
 
 

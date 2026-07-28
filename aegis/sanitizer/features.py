@@ -237,7 +237,7 @@ def top_signals(text: str, k: int = 4) -> list[str]:
     """Return the human-readable names of the strongest fired heuristics."""
     vec = heuristic_vector(text)
     fired = []
-    for name, val in zip(HEURISTIC_FEATURE_NAMES, vec):
+    for name, val in zip(HEURISTIC_FEATURE_NAMES, vec, strict=False):
         if name in _SIGNAL_LABELS and val > 0:
             fired.append((val, _SIGNAL_LABELS[name]))
     fired.sort(reverse=True)

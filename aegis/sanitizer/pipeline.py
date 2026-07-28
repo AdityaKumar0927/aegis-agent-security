@@ -62,7 +62,7 @@ class SanitizationPipeline:
 
     # ------------------------------------------------------------------ #
     @classmethod
-    def default(cls, retrain: bool = False) -> "SanitizationPipeline":
+    def default(cls, retrain: bool = False) -> SanitizationPipeline:
         """Process-wide singleton.  Loads the shipped model (integrity-checked)
         or deterministically retrains one in memory.
 

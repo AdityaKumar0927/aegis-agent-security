@@ -12,7 +12,8 @@ MessagesState, conditional edges, the tool loop).
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 try:
     from langchain_core.language_models.chat_models import BaseChatModel

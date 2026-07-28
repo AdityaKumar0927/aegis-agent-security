@@ -25,13 +25,12 @@ except ImportError:
 def _utf8_stdout() -> None:
     """The report uses box-drawing glyphs; force UTF-8 so the default Windows
     cp1252 console doesn't raise UnicodeEncodeError."""
+    import contextlib
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
-            try:
+            with contextlib.suppress(Exception):
                 reconfigure(encoding="utf-8", errors="replace")
-            except Exception:  # noqa: BLE001
-                pass
 
 
 def _atomic_write(path: str, text: str) -> None:

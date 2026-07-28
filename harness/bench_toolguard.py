@@ -35,7 +35,8 @@ def run(n: int = 6000, attack_ratio: float = 0.4, seed: int = 11, verbose: bool 
         by_kind[it.kind][1] += 1
         by_kind[it.kind][0] += dp.executed
         if it.authorized:
-            auth_tot += 1; auth_exec += dp.executed
+            auth_tot += 1
+            auth_exec += dp.executed
         else:
             unauth_tot += 1
             unauth_exec_prot += dp.executed

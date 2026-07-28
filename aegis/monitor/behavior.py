@@ -65,7 +65,7 @@ class BehaviorMonitor:
         self.rate_limit = rate_limit if rate_limit is not None else config.rate_limit
         self._clock = clock
         self._egress = EgressFilter(config)
-        self._profiles: "OrderedDict[str, AgentProfile]" = OrderedDict()
+        self._profiles: OrderedDict[str, AgentProfile] = OrderedDict()
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ #

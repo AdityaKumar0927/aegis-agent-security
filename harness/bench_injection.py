@@ -34,8 +34,10 @@ except ImportError:
 
 def _metrics(y, s, t):
     pred = (s >= t).astype(int)
-    tp = int(((pred == 1) & (y == 1)).sum()); fp = int(((pred == 1) & (y == 0)).sum())
-    fn = int(((pred == 0) & (y == 1)).sum()); tn = int(((pred == 0) & (y == 0)).sum())
+    tp = int(((pred == 1) & (y == 1)).sum())
+    fp = int(((pred == 1) & (y == 0)).sum())
+    fn = int(((pred == 0) & (y == 1)).sum())
+    tn = int(((pred == 0) & (y == 0)).sum())
     rec = tp / (tp + fn) if tp + fn else 0.0
     fpr = fp / (fp + tn) if fp + tn else 0.0
     prec = tp / (tp + fp) if tp + fp else 0.0
@@ -106,15 +108,18 @@ def _leave_one_family_out(act_threshold: float, n: int = 1500, seed: int = 5) ->
         train_fams = [f for f in families if f != held]
         texts, labels = [], []
         for _ in range(n):
-            texts.append(random_injection(rng, rng.choice(train_fams))); labels.append(1)
-            texts.append(benign_doc(rng)); labels.append(0)
+            texts.append(random_injection(rng, rng.choice(train_fams)))
+            labels.append(1)
+            texts.append(benign_doc(rng))
+            labels.append(0)
         clf = InjectionClassifier().fit(texts, labels)
         # test on the unseen technique
         hits = tot = 0
         for _ in range(400):
             inj = random_injection(rng, held)
             score = max(clf.predict_one(inj), rule_evaluate(inj)[0])
-            hits += int(score >= act_threshold); tot += 1
+            hits += int(score >= act_threshold)
+            tot += 1
         out[held] = hits / tot
     return out
 

@@ -92,7 +92,14 @@ ignore = ["E501", "B008"]
 "harness/*" = ["E402"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 ignore_missing_imports = true
-warn_unused_ignores = true
 no_implicit_optional = true
+# Third-party scientific stubs use newer syntax than our runtime target; don't
+# type-check into them.
+follow_imports_for_stubs = false
+
+[[tool.mypy.overrides]]
+module = ["numpy.*", "scipy.*", "sklearn.*", "joblib.*", "langgraph.*", "langchain_core.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true

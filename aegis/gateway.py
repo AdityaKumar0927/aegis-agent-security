@@ -21,7 +21,7 @@ from .sandbox import SandboxExecutor, SandboxRouter
 from .sanitizer import SanitizationPipeline
 from .scrubber import IntentScrubber
 from .telemetry import Telemetry
-from .types import AgentRequest, Decision, SandboxTier, Source, Verdict
+from .types import AgentRequest, Decision, Verdict
 
 
 class AegisGateway:

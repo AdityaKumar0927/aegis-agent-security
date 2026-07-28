@@ -27,6 +27,7 @@ Hardening notes (why this is more than a substring check):
 from __future__ import annotations
 
 import base64
+import contextlib
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -34,7 +35,6 @@ from dataclasses import dataclass
 from ..config import (
     DEFAULT_CONFIG,
     INTERNAL_DOMAINS,
-    KNOWN_BAD_DESTINATIONS,
     SECRET_PATTERNS,
 )
 from ..types import SandboxTier, ToolCall
@@ -74,16 +74,12 @@ def _with_decoded(text: str) -> str:
     so a secret hidden inside an encoded payload is still matched."""
     extra: list[str] = []
     for m in _B64_RE.findall(text):
-        try:
+        with contextlib.suppress(Exception):
             dec = base64.b64decode(m + "=" * (-len(m) % 4), validate=False)
             extra.append(dec.decode("utf-8", "ignore"))
-        except Exception:  # noqa: BLE001
-            pass
     for m in _HEX_RE.findall(text):
-        try:
+        with contextlib.suppress(Exception):
             extra.append(bytes.fromhex(m).decode("utf-8", "ignore"))
-        except Exception:  # noqa: BLE001
-            pass
     return text if not extra else text + " " + " ".join(extra)
 
 

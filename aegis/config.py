@@ -229,7 +229,7 @@ class AegisConfig:
     def __post_init__(self) -> None:
         self.validate()
 
-    def validate(self) -> "AegisConfig":
+    def validate(self) -> AegisConfig:
         """Raise :class:`AegisConfigError` if the config is inconsistent."""
         for role, t in self.role_trust.items():
             if not 0.0 <= float(t) <= 1.0:
@@ -280,7 +280,7 @@ class AegisConfig:
         host = host.lower()
         return any(host == d or host.endswith(d) for d in self.internal_domains)
 
-    def copy(self) -> "AegisConfig":
+    def copy(self) -> AegisConfig:
         """Return an independent deep-ish copy (own mutable containers)."""
         return replace(
             self,
@@ -299,7 +299,7 @@ class AegisConfig:
 
     # ------------------------------------------------------------------ #
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "AegisConfig":
+    def from_dict(cls, data: dict[str, Any]) -> AegisConfig:
         """Build a config from a plain dict (e.g. parsed JSON/TOML).
 
         Unknown keys are rejected so a typo can't silently leave a security
@@ -326,7 +326,7 @@ class AegisConfig:
         return cfg.validate()
 
     @classmethod
-    def from_file(cls, path: str) -> "AegisConfig":
+    def from_file(cls, path: str) -> AegisConfig:
         """Load a config from a ``.json`` or ``.toml`` file."""
         with open(path, "rb") as fh:
             raw = fh.read()
@@ -346,7 +346,7 @@ class AegisConfig:
         return cls.from_dict(data)
 
     @classmethod
-    def from_env(cls, base: "AegisConfig | None" = None, prefix: str = "AEGIS_") -> "AegisConfig":
+    def from_env(cls, base: AegisConfig | None = None, prefix: str = "AEGIS_") -> AegisConfig:
         """Overlay a small set of scalar overrides from environment variables.
 
         Recognised: ``AEGIS_INJECTION_BLOCK``, ``AEGIS_INJECTION_SANITIZE``,
