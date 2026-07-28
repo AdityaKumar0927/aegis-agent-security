@@ -4,12 +4,31 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aegis-agent-security"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Real-time behavioral monitoring middleware for multi-agent LLM systems (injection shield, PEP, sandbox routing, intent scrubber)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "AEGIS" }]
+authors = [{ name = "Aditya Kumar" }]
+keywords = [
+    "llm-security", "prompt-injection", "ai-agents", "ai-safety",
+    "guardrails", "sandbox", "rbac", "data-exfiltration", "langgraph",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
@@ -19,12 +38,61 @@ dependencies = [
 
 [project.optional-dependencies]
 langgraph = ["langgraph>=0.2", "langchain-core>=0.3"]
-dev = ["pytest>=7.0"]
+toml = ["tomli>=2.0; python_version < '3.11'"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.6",
+    "mypy>=1.8",
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/AdityaKumar0927/aegis-agent-security"
+Repository = "https://github.com/AdityaKumar0927/aegis-agent-security"
+Issues = "https://github.com/AdityaKumar0927/aegis-agent-security/issues"
+
+[project.scripts]
+aegis-train = "aegis.sanitizer.train:main"
 
 [tool.setuptools]
-packages = ["aegis", "aegis.sanitizer", "aegis.scrubber", "aegis.monitor",
-            "aegis.sandbox", "aegis.integrations", "harness"]
+# Only the library ships; the benchmark 'harness' stays in the repo for dev and
+# is not installed as a top-level site-packages package.
+packages = [
+    "aegis", "aegis.sanitizer", "aegis.scrubber", "aegis.monitor",
+    "aegis.sandbox", "aegis.integrations",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "aegis.__version__" }
+
+[tool.setuptools.package-data]
+aegis = ["py.typed", "data/*.joblib", "data/*.sha256"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-filterwarnings = ["ignore::UserWarning", "ignore::FutureWarning"]
+# Only silence the known third-party numpy/joblib pickle DeprecationWarning; do
+# NOT blanket-ignore UserWarning (that would hide our own model-integrity signals).
+filterwarnings = [
+    "error::sklearn.exceptions.InconsistentVersionWarning",
+    "ignore:Setting the shape on a NumPy array:DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]
+"harness/*" = ["E402"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+no_implicit_optional = true

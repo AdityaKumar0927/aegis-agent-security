@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 
 try:
@@ -21,7 +22,28 @@ except ImportError:
     from common import REPORT_DIR, hr
 
 
+def _utf8_stdout() -> None:
+    """The report uses box-drawing glyphs; force UTF-8 so the default Windows
+    cp1252 console doesn't raise UnicodeEncodeError."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _atomic_write(path: str, text: str) -> None:
+    """Write UTF-8 to a temp file in the same dir, then atomically replace."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
 def main() -> dict:
+    _utf8_stdout()
     print(hr("AEGIS · Agentic Execution Guardrail & Injection Shield"))
     print("Running full benchmark suite (all numbers below are freshly measured)…")
 
@@ -39,8 +61,8 @@ def main() -> dict:
     results["_wall_seconds"] = time.perf_counter() - t0
 
     os.makedirs(REPORT_DIR, exist_ok=True)
-    with open(os.path.join(REPORT_DIR, "results.json"), "w") as f:
-        json.dump(results, f, indent=2)
+    _atomic_write(os.path.join(REPORT_DIR, "results.json"),
+                  json.dumps(results, indent=2))
     _write_markdown(results)
 
     print(hr("HEADLINE RESULTS"))
@@ -111,8 +133,7 @@ def _write_markdown(r: dict) -> None:
         f"({cc['naive_concurrent_throughput']:,.0f} → {cc['opt_concurrent_throughput']:,.0f} docs/s)",
         "",
     ]
-    with open(os.path.join(REPORT_DIR, "RESULTS.md"), "w") as f:
-        f.write("\n".join(lines))
+    _atomic_write(os.path.join(REPORT_DIR, "RESULTS.md"), "\n".join(lines))
 
 
 if __name__ == "__main__":

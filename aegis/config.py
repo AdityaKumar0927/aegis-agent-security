@@ -331,7 +331,15 @@ class AegisConfig:
         with open(path, "rb") as fh:
             raw = fh.read()
         if path.endswith(".toml"):
-            import tomllib
+            try:
+                import tomllib  # Python 3.11+
+            except ModuleNotFoundError:  # 3.10 fallback
+                try:
+                    import tomli as tomllib  # type: ignore[no-redef]
+                except ModuleNotFoundError as exc:
+                    raise AegisConfigError(
+                        "TOML config requires Python 3.11+ or the 'tomli' package "
+                        "(pip install aegis-agent-security[toml])") from exc
             data = tomllib.loads(raw.decode("utf-8"))
         else:
             data = json.loads(raw.decode("utf-8"))
