@@ -88,8 +88,13 @@ class InjectionClassifier:
         if verify and os.path.exists(manifest):
             with open(manifest, encoding="utf-8") as fh:
                 expected = fh.read().strip()
+            if not expected:
+                # A present-but-empty manifest (e.g. a truncated write) must not
+                # silently skip verification.
+                raise ModelIntegrityError(
+                    f"integrity manifest {manifest} is empty; refusing to load")
             actual = _sha256(path)
-            if expected and actual != expected:
+            if actual != expected:
                 raise ModelIntegrityError(
                     f"model integrity check failed for {path}: "
                     f"expected {expected[:12]}..., got {actual[:12]}...")

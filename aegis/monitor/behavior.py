@@ -158,7 +158,12 @@ class BehaviorMonitor:
         return AnomalyResult(1.0 - keep, reasons)
 
     def record_allow(self, agent_id: str, tool_call: ToolCall | None = None) -> None:
-        """Commit an allowed call into the learned baseline."""
+        """Commit a normally-allowed, executed call into the learned baseline.
+
+        Call this only for calls that actually ran under an ALLOW/SANITIZE
+        verdict (not blocked ones, and not quarantined ones) - so an attacker's
+        denied attempts can never train the baseline to look normal.
+        """
         mono = self._clock()
         with self._lock:
             p = self._profile(agent_id, mono)
@@ -167,6 +172,17 @@ class BehaviorMonitor:
                 p.seen_tools.add(tool_call.name)
                 if tool_call.name in _SENSITIVE_READ:
                     p.last_sensitive_read_at = mono
+
+    def record_quarantined(self, agent_id: str, tool_call: ToolCall | None = None) -> None:
+        """A suspicious-but-executed (quarantined) call: record only that a
+        sensitive read occurred, for read-then-exfiltrate detection, without
+        training the normal-behaviour baseline."""
+        if tool_call is None or tool_call.name not in _SENSITIVE_READ:
+            return
+        mono = self._clock()
+        with self._lock:
+            p = self._profile(agent_id, mono)
+            p.last_sensitive_read_at = mono
 
     def record_block(self, agent_id: str) -> None:
         mono = self._clock()

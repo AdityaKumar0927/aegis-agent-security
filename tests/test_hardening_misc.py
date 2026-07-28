@@ -9,21 +9,27 @@ from aegis.telemetry import Telemetry
 
 
 def test_telemetry_concurrent_is_race_free():
+    # All threads hammer the SAME stage key so they contend on the histogram
+    # get-or-create; a barrier maximises the race window. Under the old
+    # defaultdict this could lose samples into a discarded histogram.
     tel = Telemetry()
+    barrier = threading.Barrier(8)
 
-    def worker(stage):
+    def worker():
+        barrier.wait()
         for _ in range(500):
             tel.incr("requests")
-            tel.observe_latency(stage, 1.0)
+            tel.observe_latency("shared", 1.0)
 
-    threads = [threading.Thread(target=worker, args=(f"stage{i}",)) for i in range(8)]
+    threads = [threading.Thread(target=worker) for _ in range(8)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
     snap = tel.snapshot()
     assert snap["counters"]["requests"] == 8 * 500
-    assert sum(h["count"] for h in snap["latency"].values()) == 8 * 500
+    # every observation must land in the one shared histogram
+    assert snap["latency"]["shared"]["count"] == 8 * 500
 
 
 def test_zero_width_obfuscation_detected():

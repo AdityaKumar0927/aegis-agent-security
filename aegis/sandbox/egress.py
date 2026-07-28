@@ -49,6 +49,13 @@ _ZERO_WIDTH_RE = re.compile(r"[​‌‍⁠﻿­]")
 _B64_RE = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")
 _HEX_RE = re.compile(r"(?:[0-9a-fA-F]{2}){8,}")
 
+# Bound the (relatively expensive) base64/hex decode work so a pathologically
+# large tool argument can't burn CPU.  The raw secret-pattern scan still runs on
+# the full payload, so unencoded secrets are caught at any length; only the
+# best-effort decode of *encoded* secrets is limited to the leading window.
+_MAX_DECODE_SCAN = 65_536
+_MAX_DECODE_BLOBS = 64
+
 # arg keys that carry a destination
 _DEST_KEYS = ("url", "endpoint", "dest", "destination", "to", "cc", "bcc",
               "recipient", "recipients", "host", "account", "address", "webhook")
@@ -71,13 +78,15 @@ def _normalize(text: str) -> str:
 
 def _with_decoded(text: str) -> str:
     """Return the text plus best-effort base64/hex decodings of embedded blobs,
-    so a secret hidden inside an encoded payload is still matched."""
+    so a secret hidden inside an encoded payload is still matched.  Decoding is
+    bounded (leading window + blob count) to cap CPU on huge inputs."""
+    window = text[:_MAX_DECODE_SCAN]
     extra: list[str] = []
-    for m in _B64_RE.findall(text):
+    for m in _B64_RE.findall(window)[:_MAX_DECODE_BLOBS]:
         with contextlib.suppress(Exception):
             dec = base64.b64decode(m + "=" * (-len(m) % 4), validate=False)
             extra.append(dec.decode("utf-8", "ignore"))
-    for m in _HEX_RE.findall(text):
+    for m in _HEX_RE.findall(window)[:_MAX_DECODE_BLOBS]:
         with contextlib.suppress(Exception):
             extra.append(bytes.fromhex(m).decode("utf-8", "ignore"))
     return text if not extra else text + " " + " ".join(extra)
@@ -140,8 +149,16 @@ def _carries_secret(text: str, secret_res=None) -> bool:
 
 
 def _is_internal(host: str, internal_domains=INTERNAL_DOMAINS) -> bool:
+    """Label-boundary internal check (see AegisConfig.is_internal_host)."""
     host = host.lower()
-    return any(host == d or host.endswith(d) for d in internal_domains)
+    for d in internal_domains:
+        d = d.lower()
+        if d.startswith("."):
+            if host == d[1:] or host.endswith(d):
+                return True
+        elif host == d:
+            return True
+    return False
 
 
 class EgressFilter:

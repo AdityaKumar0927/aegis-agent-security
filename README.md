@@ -15,11 +15,11 @@ All numbers below are **freshly measured** by `python -m harness.run_all` on a s
 | **Indirect prompt-injection detection** | detection rate @ 0.00% FPR | **99.8%** (AUC 1.000) |
 | | inference latency (p50 / p95 / p99) | **1.8 / 3.7 / 5.7 ms** on CPU |
 | **Unauthorized tool-execution control** | reduction vs. no-enforcement | **100%** (2384 → 0) |
-| | utility retained on legitimate traffic | **99.9%** |
+| | utility retained on legitimate traffic | **99.6%** |
 | **Dynamic sandbox routing** | exfiltration incidents over 5,200 requests | **0** (baseline would leak 1,011) |
 | | throughput (full guard, per core) | ~430 req/s → ~37M/day capacity |
 | **Intent-scrubber optimisation** | peak memory (naive → optimised) | **−92%** (2.8 → 0.2 MB) |
-| | concurrent throughput (8 workers) | **+448%** |
+| | concurrent throughput (8 workers) | **~+400%** |
 
 These map one-to-one onto the four engineering goals: *reduce unauthorized API tool execution*, *high-detection / low-latency injection sanitization*, *sandbox routing with zero exfiltration under stress*, and *a memory/concurrency-optimised intent-scrubbing algorithm*.
 

@@ -239,6 +239,13 @@ class AegisConfig:
                 raise AegisConfigError(f"unknown sensitivity level '{level}' in trust floor")
             if not 0.0 <= float(floor) <= 1.0:
                 raise AegisConfigError(f"trust floor for '{level}' must be in [0, 1], got {floor!r}")
+        # Every level must have an explicit floor: a partial override must not
+        # silently leave a sensitivity level relying on the fail-closed fallback.
+        missing = [lvl for lvl in _SENSITIVITY_LEVELS if lvl not in self.sensitivity_trust_floor]
+        if missing:
+            raise AegisConfigError(
+                f"sensitivity_trust_floor is missing levels {missing}; "
+                "provide a floor for every sensitivity level")
         for tool, level in self.tool_sensitivity.items():
             if level not in _SENSITIVITY_LEVELS:
                 raise AegisConfigError(f"tool_sensitivity['{tool}'] has unknown level '{level}'")
@@ -262,7 +269,10 @@ class AegisConfig:
         return self.tool_sensitivity.get(tool, SENSITIVITY_HIGH)
 
     def trust_floor(self, sensitivity: str) -> float:
-        return self.sensitivity_trust_floor.get(sensitivity, 0.6)
+        # Fail closed: an unknown/missing level requires maximal trust (1.0)
+        # rather than the old permissive 0.6, so a partial override can never
+        # silently *lower* a floor (e.g. drop CRITICAL from 0.90).
+        return self.sensitivity_trust_floor.get(sensitivity, 1.0)
 
     def is_permitted(self, role: str, tool: str) -> bool:
         return tool in self.role_tool_matrix.get(role, set())
@@ -277,8 +287,22 @@ class AegisConfig:
         return tool in self.secret_tools
 
     def is_internal_host(self, host: str) -> bool:
+        """Internal iff the host matches an entry on a *label boundary*.
+
+        An entry beginning with '.' (e.g. '.internal.corp') matches that domain
+        and any subdomain of it; a bare entry (e.g. 'localhost', 'corp.example')
+        matches only by exact equality.  This avoids the endswith() footgun where
+        'notlocalhost' or 'data.evilcorp.example' would count as internal.
+        """
         host = host.lower()
-        return any(host == d or host.endswith(d) for d in self.internal_domains)
+        for d in self.internal_domains:
+            d = d.lower()
+            if d.startswith("."):
+                if host == d[1:] or host.endswith(d):
+                    return True
+            elif host == d:
+                return True
+        return False
 
     def copy(self) -> AegisConfig:
         """Return an independent deep-ish copy (own mutable containers)."""
@@ -321,7 +345,10 @@ class AegisConfig:
             elif key == "internal_domains":
                 value = tuple(value)
             setattr(cfg, key, value)
-        if isinstance(thresholds, dict):
+        if thresholds is not None:
+            if not isinstance(thresholds, dict):
+                raise AegisConfigError(
+                    f"'thresholds' must be a mapping, got {type(thresholds).__name__}")
             cfg.thresholds = Thresholds(**thresholds)
         return cfg.validate()
 

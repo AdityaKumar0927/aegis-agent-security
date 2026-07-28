@@ -46,10 +46,14 @@ class PolicyEnforcementPoint:
         tool = request.tool_call.name
         sensitivity = self.config.sensitivity(tool)
 
+        # NOTE: the behavioural baseline is committed by the gateway *after* the
+        # final decision (including egress inspection) is known - see
+        # AegisGateway._commit_behaviour.  The enforcer only scores here, so an
+        # ALLOW verdict that egress later blocks does not train the baseline.
+
         # --- hard policy (RBAC + trust floor) -------------------------- #
         check = self.policy.check(request.role, tool)
         if not check.ok:
-            self.behavior.record_block(request.agent_id)
             if check.hard_block:
                 return EnforcementOutcome(Verdict.BLOCK, 0.0, [check.reason])
             # A soft policy failure (e.g. a medium-sensitivity tool below its
@@ -58,14 +62,13 @@ class PolicyEnforcementPoint:
                 Verdict.QUARANTINE, 0.0, [check.reason + " -> quarantine"],
                 force_min_isolation=True)
 
-        # --- behavioral anomaly (scores only; no baseline commit yet) --- #
+        # --- behavioral anomaly (scores only; no baseline commit here) --- #
         anomaly: AnomalyResult = self.behavior.observe(request.agent_id, request.tool_call, now=request.ts)
         reasons.extend(anomaly.reasons)
         score = anomaly.score
 
         # --- injection-driven decisions -------------------------------- #
         if injection_score >= th.injection_block:
-            self.behavior.record_block(request.agent_id)
             return EnforcementOutcome(
                 Verdict.BLOCK, score,
                 [f"injection score {injection_score:.2f} >= block"] + reasons)
@@ -74,14 +77,12 @@ class PolicyEnforcementPoint:
         # blocked - we never let a possibly-poisoned step touch a dangerous tool.
         if sensitivity in (SENSITIVITY_HIGH, SENSITIVITY_CRITICAL) and \
                 injection_score >= th.injection_sanitize:
-            self.behavior.record_block(request.agent_id)
             return EnforcementOutcome(
                 Verdict.BLOCK, score,
                 [f"{sensitivity} tool '{tool}' with injection {injection_score:.2f}"] + reasons)
 
         # Anomaly-driven decisions.
         if score >= th.anomaly_block and sensitivity in (SENSITIVITY_HIGH, SENSITIVITY_CRITICAL):
-            self.behavior.record_block(request.agent_id)
             return EnforcementOutcome(
                 Verdict.BLOCK, score,
                 [f"anomaly {score:.2f} on {sensitivity} tool '{tool}'"] + reasons)
@@ -97,11 +98,9 @@ class PolicyEnforcementPoint:
         # Moderate injection on a low/medium tool: scrub the content before the
         # (legitimate) tool runs.  High/critical tools were already blocked above.
         if injection_score >= th.injection_sanitize:
-            self.behavior.record_allow(request.agent_id, request.tool_call)
             reason = (f"egress tool '{tool}' - scrub content first"
                       if tool in EGRESS_TOOLS
                       else f"injection {injection_score:.2f} on '{tool}' -> scrub content")
             return EnforcementOutcome(Verdict.SANITIZE, score, [reason] + reasons)
 
-        self.behavior.record_allow(request.agent_id, request.tool_call)
         return EnforcementOutcome(Verdict.ALLOW, score, reasons or ["ok"])

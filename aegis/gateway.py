@@ -80,13 +80,25 @@ class AegisGateway:
         stage_ms: dict[str, float] = {}
         reasons: list[str] = []
 
-        # Bound untrusted content length before any regex/normalisation work so a
-        # pathologically large input can't burn unbounded CPU (DoS guard).
         content = request.content
         max_len = self.config.max_content_length
+
+        # Oversized untrusted content is a DoS/coverage hazard: we will NOT
+        # truncate-and-inspect (that would leave an unscanned tail through which
+        # an injection could pass), and we will NOT scan an unbounded input.
+        # Fail closed - block and let the operator raise max_content_length for
+        # legitimately large content.  Direct USER input (higher trust) is scanned
+        # in full up to the limit.
         if len(content) > max_len:
-            content = content[:max_len]
-            reasons.append(f"content truncated to {max_len} chars")
+            reasons.append(
+                f"content length {len(content)} exceeds max_content_length "
+                f"{max_len} -> block (fail-closed)")
+            return self._finalize(
+                request, Verdict.BLOCK, allowed=False, executed=False, tier=None,
+                injection_score=0.0, anomaly=0.0, reasons=reasons,
+                sanitized=None, result=None, t_start=t_start, stage_ms=stage_ms,
+                would_block=True,
+            )
 
         # --- Stage 1: sanitize content -------------------------------- #
         t = time.perf_counter()
@@ -220,9 +232,30 @@ class AegisGateway:
             pass
         return dec
 
+    def _commit_behaviour(self, request: AgentRequest, verdict: Verdict, executed: bool) -> None:
+        """Commit the behavioural outcome once the FINAL decision is known.
+
+        Doing this here (rather than in the enforcer) means an ALLOW verdict that
+        the egress filter later blocks trains nothing and is recorded as a block;
+        a blocked attack can never teach the baseline to look normal.
+        """
+        if request.tool_call is None:
+            return
+        behaviour = getattr(self.pep, "behavior", None)
+        if behaviour is None:
+            return
+        if verdict == Verdict.BLOCK:
+            behaviour.record_block(request.agent_id)
+        elif verdict in (Verdict.ALLOW, Verdict.SANITIZE) and executed:
+            behaviour.record_allow(request.agent_id, request.tool_call)
+        elif verdict == Verdict.QUARANTINE and executed:
+            # suspicious-but-ran: note a sensitive read for later, don't train
+            behaviour.record_quarantined(request.agent_id, request.tool_call)
+
     def _finalize(self, request, verdict, *, allowed, executed, tier, injection_score,
                   anomaly, reasons, sanitized, result, t_start, stage_ms,
                   would_block=False, exfil_attempt=False, exfil_blocked=False) -> Decision:
+        self._commit_behaviour(request, verdict, executed)
         latency = (time.perf_counter() - t_start) * 1000.0
         self.telemetry.incr("requests")
         self.telemetry.incr(f"verdict.{verdict.value}")
