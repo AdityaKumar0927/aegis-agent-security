@@ -7,15 +7,18 @@ attacks are always caught by the rules, then records wall-clock latency.
 """
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
 
+from ..errors import ModelIntegrityError
 from ..types import SanitizeResult, Source
 from .classifier import InjectionClassifier, train_default
 from .detectors import rule_evaluate
 from .features import top_signals
 
+_log = logging.getLogger("aegis.sanitizer")
 _DEFAULT_LOCK = threading.Lock()
 _DEFAULT_PIPELINE = None
 
@@ -60,7 +63,16 @@ class SanitizationPipeline:
     # ------------------------------------------------------------------ #
     @classmethod
     def default(cls, retrain: bool = False) -> "SanitizationPipeline":
-        """Process-wide singleton.  Loads a cached model or trains one once."""
+        """Process-wide singleton.  Loads the shipped model (integrity-checked)
+        or deterministically retrains one in memory.
+
+        On any load problem - a failed integrity check, an incompatible
+        scikit-learn version, or a feature-dimension mismatch - this logs a
+        warning and retrains **in memory** with a fixed seed (same model every
+        time).  It does *not* silently write a model into the source tree; run
+        ``python -m aegis.sanitizer.train`` to deliberately regenerate the
+        shipped artifact.
+        """
         global _DEFAULT_PIPELINE
         with _DEFAULT_LOCK:
             if _DEFAULT_PIPELINE is not None and not retrain:
@@ -72,16 +84,13 @@ class SanitizationPipeline:
                 try:
                     clf.load_model(path)
                     loaded = True
-                except Exception:
-                    # e.g. a scikit-learn version mismatch on the pickled model;
-                    # fall back to a deterministic retrain (same seed -> same model)
-                    loaded = False
+                except ModelIntegrityError as exc:
+                    _log.warning("model load rejected (%s); retraining in memory. "
+                                 "Run 'python -m aegis.sanitizer.train' to refresh "
+                                 "the shipped artifact.", exc)
+                except Exception as exc:  # noqa: BLE001
+                    _log.warning("model load failed (%s); retraining in memory.", exc)
             if not loaded:
                 clf, _ = train_default()
-                try:
-                    os.makedirs(os.path.dirname(path), exist_ok=True)
-                    clf.save(path)
-                except OSError:
-                    pass
             _DEFAULT_PIPELINE = cls(clf)
             return _DEFAULT_PIPELINE

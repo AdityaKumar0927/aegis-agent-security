@@ -96,10 +96,18 @@ _RULES = [
 
 def rule_evaluate(text: str) -> tuple[float, list[RuleHit]]:
     """Return (score in [0,1], list of fired rules)."""
+    # Detect hidden zero-width characters on the RAW text first - normalisation
+    # strips them, so checking after would make the hidden-char rule dead code.
+    raw_has_zero_width = bool(_ZERO_WIDTH.search(text))
     text = normalize_text(text)
     hits: list[RuleHit] = []
 
+    if raw_has_zero_width:
+        hits.append(RuleHit("hidden_chars_raw", 0.55, "hidden zero-width characters"))
+
     for name, weight, pattern, desc in _RULES:
+        if name == "hidden_chars":
+            continue  # handled above on the raw text
         if pattern.search(text):
             hits.append(RuleHit(name, weight, desc))
 

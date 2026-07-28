@@ -105,51 +105,62 @@ class NaiveIntentScrubber:
 # --------------------------------------------------------------------------- #
 # Optimised
 # --------------------------------------------------------------------------- #
-_COMPILED = [re.compile(p, re.IGNORECASE) for p in _RAW_PATTERNS]
-# Cheap pre-filter: if none of these trigger substrings appear, the text cannot
-# match any full pattern, so we skip the expensive per-line scan entirely.
-_HINT = re.compile(
-    r"ignore|disregard|forget|override|bypass|discard|<\|im|system:|assistant:|"
-    r"developer mode|do anything now|\bdan\b|jailbreak|no longer bound|"
-    r"exfiltrat|upload|invoke|execute\b|new instructions|updated policy",
-    re.IGNORECASE,
-)
+# The per-line patterns are compiled with the SAME flags the naive scrubber uses
+# (IGNORECASE | MULTILINE), so the optimised per-line scan is byte-for-byte
+# equivalent to the baseline.
+_COMPILED = [re.compile(p, re.IGNORECASE | re.MULTILINE) for p in _RAW_PATTERNS]
+# Sound pre-filter: the union of the patterns.  If the master pattern does not
+# match anywhere in the (normalised) text, then no individual pattern can match
+# any line either - so skipping the per-line scan is provably safe.  This
+# replaces the old hand-written substring hint, which could (and did) miss lines
+# the full patterns would have redacted.
+_MASTER = re.compile("|".join(f"(?:{p})" for p in _RAW_PATTERNS),
+                     re.IGNORECASE | re.MULTILINE)
 
 
 class IntentScrubber:
-    """Optimised single-pass scrubber with a bounded LRU cache."""
+    """Optimised single-pass scrubber with a bounded LRU cache.
+
+    Produces output identical to :class:`NaiveIntentScrubber` (the fast path is a
+    sound superset pre-filter, not a heuristic), but precompiles patterns once and
+    caches by content so recurrent inputs are free.
+    """
 
     def __init__(self, cache_size: int = 1024) -> None:
-        self._cache: "OrderedDict[int, ScrubResult]" = OrderedDict()
+        if cache_size < 1:
+            raise ValueError("cache_size must be >= 1")
+        # Keyed on the text itself (not hash(text)) so a hash collision can never
+        # return a different document's scrub result.
+        self._cache: "OrderedDict[str, ScrubResult]" = OrderedDict()
         self._cache_size = cache_size
         self._lock = threading.Lock()   # bounded cache is safe to share across agents
 
-    def _lru_get(self, key: int):
+    def _lru_get(self, key: str):
         with self._lock:
             res = self._cache.get(key)
             if res is not None:
                 self._cache.move_to_end(key)
             return res
 
-    def _lru_put(self, key: int, res: ScrubResult) -> None:
+    def _lru_put(self, key: str, res: ScrubResult) -> None:
         with self._lock:
             self._cache[key] = res
             if len(self._cache) > self._cache_size:
                 self._cache.popitem(last=False)   # evict oldest -> flat memory
 
     def scrub(self, text: str) -> ScrubResult:
-        key = hash(text)
-        cached = self._lru_get(key)
+        cached = self._lru_get(text)
         if cached is not None:
             return cached
 
         norm = _canonicalize(text)
 
         # fast path: the overwhelming majority of benign content hits this and
-        # avoids all per-line regex work.
-        if not _HINT.search(norm):
+        # avoids all per-line regex work.  Sound because _MASTER is the union of
+        # the per-line patterns.
+        if not _MASTER.search(norm):
             res = ScrubResult(norm, 0, 0, [])
-            self._lru_put(key, res)
+            self._lru_put(text, res)
             return res
 
         removed = 0
@@ -166,5 +177,5 @@ class IntentScrubber:
                 out.append(ln)
 
         res = ScrubResult("\n".join(out), removed, chars_removed, redactions)
-        self._lru_put(key, res)
+        self._lru_put(text, res)
         return res

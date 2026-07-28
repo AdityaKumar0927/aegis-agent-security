@@ -7,13 +7,25 @@ footprint - the "lightweight semantic classifier" the spec calls for.
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import warnings
 
 import numpy as np
+from sklearn.exceptions import InconsistentVersionWarning
 from sklearn.linear_model import LogisticRegression
 
+from ..errors import ModelIntegrityError
 from .dataset import make_dataset
 from .features import FeatureExtractor
+
+
+def _sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 class InjectionClassifier:
@@ -39,17 +51,67 @@ class InjectionClassifier:
 
     # ------------------------------------------------------------------ #
     def save(self, path: str) -> None:
+        """Persist the model and write a sibling ``.sha256`` integrity manifest."""
         import joblib
         joblib.dump(self.model, path)
+        digest = _sha256(path)
+        with open(path + ".sha256", "w", encoding="utf-8") as fh:
+            fh.write(digest + "\n")
 
     @classmethod
     def _model_path(cls) -> str:
-        here = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return os.path.join(here, "data", "injection_model.joblib")
+        # The artifact ships inside the package (aegis/data/) so it is importable
+        # from an installed wheel; fall back to the repo-root data/ dir for an
+        # editable checkout that predates the move.
+        here = os.path.dirname(os.path.abspath(__file__))
+        pkg = os.path.join(os.path.dirname(here), "data", "injection_model.joblib")
+        if os.path.exists(pkg):
+            return pkg
+        repo = os.path.join(
+            os.path.dirname(os.path.dirname(here)), "data", "injection_model.joblib")
+        return repo if os.path.exists(repo) else pkg
 
-    def load_model(self, path: str) -> "InjectionClassifier":
+    def load_model(self, path: str, verify: bool = True) -> "InjectionClassifier":
+        """Load a pickled model.
+
+        ``joblib.load`` unpickles arbitrary objects, so a tampered/untrusted model
+        file is a code-execution sink.  When a sibling ``<path>.sha256`` manifest
+        exists it is verified first and a mismatch raises
+        :class:`ModelIntegrityError` (fail-closed - the caller retrains rather
+        than executing an unknown pickle).  A scikit-learn version mismatch or a
+        feature-dimension mismatch also raises, so a silently-invalid model can't
+        be used for live security decisions.
+        """
         import joblib
-        self.model = joblib.load(path)
+
+        manifest = path + ".sha256"
+        if verify and os.path.exists(manifest):
+            with open(manifest, encoding="utf-8") as fh:
+                expected = fh.read().strip()
+            actual = _sha256(path)
+            if expected and actual != expected:
+                raise ModelIntegrityError(
+                    f"model integrity check failed for {path}: "
+                    f"expected {expected[:12]}..., got {actual[:12]}...")
+
+        with warnings.catch_warnings():
+            # A cross-version pickle is not trustworthy for security decisions.
+            warnings.simplefilter("error", InconsistentVersionWarning)
+            try:
+                model = joblib.load(path)
+            except InconsistentVersionWarning as exc:
+                raise ModelIntegrityError(
+                    f"model at {path} was pickled by an incompatible "
+                    f"scikit-learn version: {exc}") from exc
+
+        expected_dim = self.extractor.n_features
+        n_in = getattr(model, "n_features_in_", None)
+        if n_in is not None and n_in != expected_dim:
+            raise ModelIntegrityError(
+                f"model feature dimension {n_in} != extractor dimension "
+                f"{expected_dim}; the feature pipeline has changed - retrain")
+
+        self.model = model
         self._fitted = True
         return self
 

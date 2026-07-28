@@ -177,45 +177,56 @@ def _count(pattern: re.Pattern, text: str) -> int:
 
 
 def heuristic_vector(text: str) -> np.ndarray:
-    """Compute the dense semantic-heuristic feature vector for ``text``."""
+    """Compute the dense semantic-heuristic feature vector for ``text``.
+
+    Obfuscation markers (zero-width chars, non-ASCII ratio, uppercase ratio) are
+    measured on the **raw** text, before normalisation would strip them, so
+    hidden-character attacks are actually detected.  The semantic patterns are
+    measured on the **normalised** text so letter-spacing / homoglyph obfuscation
+    collapses onto the canonical phrasing they generalise over.
+    """
     if not text:
         return np.zeros(N_HEURISTIC, dtype=np.float32)
 
-    n = len(text)
-    nonascii = sum(1 for c in text if ord(c) > 127)
-    upper = sum(1 for c in text if c.isupper())
-    words = max(text.count(" ") + 1, 1)
+    raw = text
+    norm = normalize_text(text)
 
-    exfil = _count(_EXFIL_VERB, text)
-    cred = 1.0 if _CREDENTIAL.search(text) else 0.0
+    n = len(raw)
+    nonascii = sum(1 for c in raw if ord(c) > 127)
+    upper = sum(1 for c in raw if c.isupper())
+    zero_width = _count(_ZERO_WIDTH, raw)     # measured pre-normalisation
+    words = max(norm.count(" ") + 1, 1)
+
+    exfil = _count(_EXFIL_VERB, norm)
+    cred = 1.0 if _CREDENTIAL.search(norm) else 0.0
     # co-occurrence: an exfiltration verb *and* a secret/URL in the same text is
     # far more suspicious than either alone.
-    exfil_near_secret = 1.0 if (exfil and (cred or _URL.search(text))) else 0.0
+    exfil_near_secret = 1.0 if (exfil and (cred or _URL.search(norm))) else 0.0
 
     vec = np.array(
         [
             np.log1p(n),
             nonascii / n,
-            float(min(_count(_ZERO_WIDTH, text), 5)),
-            float(min(_count(_OVERRIDE, text), 3)),
-            float(min(_count(_ROLE_TOKENS, text), 3)),
-            1.0 if _NEW_POLICY.search(text) else 0.0,
-            1.0 if _JAILBREAK.search(text) else 0.0,
+            float(min(zero_width, 5)),
+            float(min(_count(_OVERRIDE, norm), 3)),
+            float(min(_count(_ROLE_TOKENS, norm), 3)),
+            1.0 if _NEW_POLICY.search(norm) else 0.0,
+            1.0 if _JAILBREAK.search(norm) else 0.0,
             float(min(exfil, 4)),
             exfil_near_secret,
-            1.0 if _TOOL_TRIGGER.search(text) else 0.0,
+            1.0 if _TOOL_TRIGGER.search(norm) else 0.0,
             cred,
-            min(_count(_IMPERATIVE, text) / words * 10.0, 3.0),
-            float(min(_count(_URL, text), 5)),
-            float(min(_count(_EMAIL, text), 5)),
-            1.0 if _BASE64_BLOB.search(text) else 0.0,
-            1.0 if _HEX_BLOB.search(text) else 0.0,
-            float(min(_count(_DELIMITER, text), 5)),
+            min(_count(_IMPERATIVE, norm) / words * 10.0, 3.0),
+            float(min(_count(_URL, norm), 5)),
+            float(min(_count(_EMAIL, norm), 5)),
+            1.0 if _BASE64_BLOB.search(norm) else 0.0,
+            1.0 if _HEX_BLOB.search(norm) else 0.0,
+            float(min(_count(_DELIMITER, norm), 5)),
             upper / n,
-            1.0 if _MULTILINGUAL_OVERRIDE.search(text) else 0.0,
-            1.0 if _SECRECY.search(text) else 0.0,
-            1.0 if _COERCION.search(text) else 0.0,
-            1.0 if _MAL_PAYLOAD.search(text) else 0.0,
+            1.0 if _MULTILINGUAL_OVERRIDE.search(norm) else 0.0,
+            1.0 if _SECRECY.search(norm) else 0.0,
+            1.0 if _COERCION.search(norm) else 0.0,
+            1.0 if _MAL_PAYLOAD.search(norm) else 0.0,
         ],
         dtype=np.float32,
     )
@@ -285,5 +296,12 @@ class FeatureExtractor:
         norm = [normalize_text(t) for t in texts]
         word = self.word_hasher.transform(norm)
         char = self.char_hasher.transform(norm)
-        heur = np.vstack([heuristic_vector(t) for t in norm]) * self._heur_scale
+        # heuristic_vector normalises internally for its semantic features but
+        # measures obfuscation (zero-width / non-ASCII) on the RAW text, so it
+        # must receive the originals, not the pre-normalised strings.
+        heur = np.vstack([heuristic_vector(t) for t in texts]) * self._heur_scale
         return sparse.hstack([word, char, sparse.csr_matrix(heur)], format="csr")
+
+    @property
+    def n_features(self) -> int:
+        return self.word_hasher.n_features + self.char_hasher.n_features + N_HEURISTIC
