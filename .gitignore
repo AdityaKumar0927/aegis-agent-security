@@ -8,3 +8,8 @@ venv/
 build/
 dist/
 .DS_Store
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
