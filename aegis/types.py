@@ -192,6 +192,15 @@ class Decision:
     exfiltration_attempt: bool = False
     exfiltration_blocked: bool = False
 
+    # In monitor-only mode (gateway ``enforce=False``) the verdict is not applied
+    # to execution; ``would_block`` records whether enforcement *would* have
+    # blocked, so operators can measure impact before switching enforcement on.
+    would_block: bool = False
+
+    # Set to a short error tag when the gateway failed internally and returned a
+    # fail-closed BLOCK; None on the normal path.
+    error: Optional[str] = None
+
     def summary(self) -> str:
         tier = self.tier.value if self.tier else "-"
         return (

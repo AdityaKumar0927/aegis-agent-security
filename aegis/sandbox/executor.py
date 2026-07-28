@@ -35,8 +35,10 @@ class ExecOutcome:
 
 
 class SandboxExecutor:
-    def __init__(self, enforce_egress: bool = True):
-        self.egress = EgressFilter()
+    def __init__(self, config=None, enforce_egress: bool = True):
+        from ..config import DEFAULT_CONFIG
+        self.config = config if config is not None else DEFAULT_CONFIG
+        self.egress = EgressFilter(self.config)
         self.enforce_egress = enforce_egress
         # simulated secret store; the canary is what we track through the system
         self.secret_store = {

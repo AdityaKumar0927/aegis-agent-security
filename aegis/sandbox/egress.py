@@ -72,12 +72,16 @@ def _is_internal(host: str) -> bool:
 
 
 class EgressFilter:
+    def __init__(self, config=None):
+        from ..config import DEFAULT_CONFIG
+        self.config = config if config is not None else DEFAULT_CONFIG
+
     def inspect(self, tier: SandboxTier, tool_call: ToolCall) -> EgressDecision:
         # Non-egress tools have no exfiltration surface here.
-        if tool_call.name not in EGRESS_TOOLS:
+        if tool_call.name not in self.config.egress_tools:
             return EgressDecision(True, "not an egress tool")
 
-        cap = capability(tier)
+        cap = self.config.tier_caps.get(tier) or capability(tier)
         dest = _extract_destination(tool_call)
         payload = _payload_text(tool_call)
         secret = _carries_secret(payload)
@@ -94,7 +98,7 @@ class EgressFilter:
             )
 
         # 2) Known-bad destination -> always exfiltration.
-        if dest in KNOWN_BAD_DESTINATIONS:
+        if dest in self.config.known_bad_destinations:
             return EgressDecision(False, f"known-bad destination '{dest}'",
                                   is_exfil_attempt=True, destination=dest)
 
