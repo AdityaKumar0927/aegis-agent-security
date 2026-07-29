@@ -72,7 +72,7 @@ jobs:
           w = sorted(glob.glob("dist/*.whl"))[-1]
           names = zipfile.ZipFile(w).namelist()
           assert "aegis/py.typed" in names, "py.typed missing from wheel"
-          assert "aegis/data/injection_model.joblib" in names, "model missing from wheel"
-          assert "aegis/data/injection_model.joblib.sha256" in names, "manifest missing"
+          assert "aegis/data/injection_model.npz" in names, "model missing from wheel"
+          assert "aegis/data/injection_model.npz.sha256" in names, "manifest missing"
           print("wheel OK:", w)
           PY

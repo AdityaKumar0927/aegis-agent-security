@@ -2,8 +2,8 @@
 
 Run deliberately (never at import time)::
 
-    python -m aegis.sanitizer.train              # -> aegis/data/injection_model.joblib
-    python -m aegis.sanitizer.train --out /tmp/m.joblib
+    python -m aegis.sanitizer.train              # -> aegis/data/injection_model.npz
+    python -m aegis.sanitizer.train --out /tmp/m.npz
 
 Training is deterministic (fixed seed), so the artifact is reproducible.  A
 sibling ``<out>.sha256`` integrity manifest is written alongside it, which the
@@ -20,7 +20,7 @@ from .classifier import InjectionClassifier, train_default
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Train the AEGIS injection model.")
     ap.add_argument("--out", default=InjectionClassifier._model_path(),
-                    help="output .joblib path (default: packaged artifact)")
+                    help="output .npz path (default: packaged artifact)")
     ap.add_argument("--n-per-class", type=int, default=4000)
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args(argv)

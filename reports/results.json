@@ -1,7 +1,7 @@
 {
   "injection": {
     "n_test": 2666,
-    "model_source": "loaded:ee78b29e5a67",
+    "model_source": "loaded:3fae8e50cfef",
     "auc": 0.9999977488745779,
     "act_threshold": 0.3,
     "block_threshold": 0.8,
@@ -12,13 +12,13 @@
     "fpr_at_block": 0.0,
     "precision_at_block": 1.0,
     "latency_ms": {
-      "mean": 2.1358836460659463,
-      "p50": 1.8246000399813056,
-      "p95": 4.068100010044873,
-      "p99": 6.182859966065731,
-      "max": 19.163499935530126
+      "mean": 5.857761814720113,
+      "p50": 5.561399972066283,
+      "p95": 8.451700006844476,
+      "p99": 11.895209987414988,
+      "max": 22.591699962504208
     },
-    "throughput_per_s_1thread": 468.1902976512254,
+    "throughput_per_s_1thread": 170.71366703355463,
     "lofo": {
       "direct_override": 1.0,
       "fake_system": 1.0,
@@ -36,8 +36,8 @@
     "n": 6000,
     "attack_ratio": 0.4,
     "authorized_total": 3616,
-    "authorized_executed": 3599,
-    "utility": 0.9952986725663717,
+    "authorized_executed": 3606,
+    "utility": 0.9972345132743363,
     "unauthorized_total": 2384,
     "unauthorized_executed_baseline": 2384,
     "unauthorized_executed_protected": 0,
@@ -45,7 +45,7 @@
     "reduction_vs_baseline": 1.0,
     "by_kind": {
       "benign": {
-        "executed": 3599,
+        "executed": 3606,
         "total": 3616
       },
       "rbac_violation": {
@@ -76,15 +76,15 @@
     "exfil_leaks_protected": 0,
     "exfil_leaks_unprotected_baseline": 1011,
     "exfil_attempts_blocked": 528,
-    "throughput_req_per_s": 240.41035013848295,
-    "projected_daily_capacity": 20771454.251964927,
+    "throughput_req_per_s": 84.76562779087219,
+    "projected_daily_capacity": 7323750.241131357,
     "tier_distribution": {
       "restricted": 892,
       "read_only": 1709,
       "trusted": 560,
       "no_net": 2
     },
-    "protected_wall_s": 21.629684400046244
+    "protected_wall_s": 61.345620100037195
   },
   "concurrency": {
     "n_docs": 20000,
@@ -92,15 +92,15 @@
     "naive_peak_mem_mb": 2.753601,
     "opt_peak_mem_mb": 0.27802,
     "mem_reduction": 0.899034028532093,
-    "naive_throughput": 5283.317923658656,
-    "opt_throughput": 91880.47638182044,
-    "throughput_gain": 16.390677167160508,
-    "naive_concurrent_throughput": 4822.667036575605,
-    "opt_concurrent_throughput": 16968.722657455866,
-    "concurrency_gain": 2.518534978418232,
+    "naive_throughput": 1783.2140126744612,
+    "opt_throughput": 29702.429182497748,
+    "throughput_gain": 15.656682244185653,
+    "naive_concurrent_throughput": 1647.1362428136679,
+    "opt_concurrent_throughput": 7306.132504732237,
+    "concurrency_gain": 3.4356576674263266,
     "naive_mem_per_1k": 0.13768005,
     "opt_mem_per_1k": 0.013901
   },
-  "_wall_seconds": 120.62040160002653,
-  "_model_source": "loaded:ee78b29e5a67"
+  "_wall_seconds": 355.00607740005944,
+  "_model_source": "loaded:3fae8e50cfef"
 }

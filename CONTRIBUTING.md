@@ -35,9 +35,9 @@ benchmark harness, also run `python -m harness.run_all` and update
 - **Add a regression test for every bug you fix.** Security fixes especially:
   include the exact input that used to slip through.
 - **Keep the dependency surface small.** The core depends only on
-  numpy/scipy/scikit-learn/joblib; heavier or framework-specific deps go behind
+  numpy/scipy/scikit-learn; heavier or framework-specific deps go behind
   an optional extra.
-- **Retraining the model** changes `aegis/data/injection_model.joblib` and its
+- **Retraining the model** changes `aegis/data/injection_model.npz` and its
   `.sha256`. Regenerate deterministically with `python -m aegis.sanitizer.train`
   and commit both files together.
 

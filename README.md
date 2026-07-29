@@ -123,7 +123,7 @@ pytest -q
 ruff check aegis && mypy aegis
 ```
 
-The core library (`import aegis`) needs only numpy/scipy/scikit-learn/joblib;
+The core library (`import aegis`) needs only numpy/scipy/scikit-learn;
 LangGraph is an optional extra used solely by the integration and its demo.
 
 Individual benchmarks: `python -m harness.bench_injection` · `bench_toolguard` · `stress_sandbox` · `bench_concurrency`.

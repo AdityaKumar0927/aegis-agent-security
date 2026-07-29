@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-import warnings
 
 import numpy as np
-from sklearn.exceptions import InconsistentVersionWarning
 from sklearn.linear_model import LogisticRegression
 
 from ..errors import ModelIntegrityError
@@ -28,32 +26,75 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
+# Bumped whenever the on-disk artifact layout changes.
+MODEL_FORMAT = 1
+
+
 class InjectionClassifier:
+    """Logistic regression over the sparse feature space.
+
+    The trained model is nothing more than a weight vector and an intercept, so
+    it is persisted as **plain arrays** (``.npz``) rather than a pickled
+    estimator.  That matters twice over:
+
+    * **Safety** - ``joblib``/``pickle`` executes arbitrary objects on load, which
+      is an unacceptable sink for a security component that may be pointed at a
+      third-party artifact.  ``np.load(..., allow_pickle=False)`` cannot execute
+      anything.
+    * **Portability** - a pickled estimator is bound to the scikit-learn version
+      that produced it, so the shipped model was rejected on any environment that
+      resolved a different version (exactly what happened on Python 3.10, where
+      pip installs scikit-learn 1.7.x). Plain arrays load anywhere.
+
+    scikit-learn is used for *training* only; inference is a dot product plus a
+    sigmoid, so a loaded model needs no estimator object at all.
+    """
+
     def __init__(self, C: float = 4.0):
         self.extractor = FeatureExtractor()
         self.model = LogisticRegression(
             solver="liblinear", C=C, max_iter=3000
         )
         self._fitted = False
+        # Populated when loaded from disk; inference then uses these directly.
+        self._coef: np.ndarray | None = None
+        self._intercept: float = 0.0
 
     def fit(self, texts: list[str], labels: list[int]) -> InjectionClassifier:
         X = self.extractor.transform(texts)
         self.model.fit(X, np.asarray(labels))
+        self._coef = np.asarray(self.model.coef_, dtype=np.float64).ravel()
+        self._intercept = float(np.asarray(self.model.intercept_).ravel()[0])
         self._fitted = True
         return self
 
+    @property
+    def n_features(self) -> int:
+        return int(self._coef.shape[0]) if self._coef is not None else self.extractor.n_features
+
     def predict_proba(self, texts: list[str]) -> np.ndarray:
         X = self.extractor.transform(texts)
-        return self.model.predict_proba(X)[:, 1]
+        if self._coef is None:
+            raise ModelIntegrityError("classifier has no weights; fit or load a model first")
+        # sigmoid(X @ w + b) - identical to LogisticRegression.predict_proba[:, 1]
+        z = np.asarray(X @ self._coef).ravel() + self._intercept
+        return 1.0 / (1.0 + np.exp(-z))
 
     def predict_one(self, text: str) -> float:
         return float(self.predict_proba([text])[0])
 
     # ------------------------------------------------------------------ #
     def save(self, path: str) -> None:
-        """Persist the model and write a sibling ``.sha256`` integrity manifest."""
-        import joblib
-        joblib.dump(self.model, path)
+        """Persist the weights as plain arrays + a sibling ``.sha256`` manifest."""
+        if self._coef is None:
+            raise ModelIntegrityError("nothing to save: the classifier is not fitted")
+        np.savez(
+            path,
+            format=np.array([MODEL_FORMAT]),
+            coef=self._coef.astype(np.float64),
+            intercept=np.array([self._intercept], dtype=np.float64),
+            n_features=np.array([self._coef.shape[0]]),
+        )
         digest = _sha256(path)
         with open(path + ".sha256", "w", encoding="utf-8") as fh:
             fh.write(digest + "\n")
@@ -61,29 +102,20 @@ class InjectionClassifier:
     @classmethod
     def _model_path(cls) -> str:
         # The artifact ships inside the package (aegis/data/) so it is importable
-        # from an installed wheel; fall back to the repo-root data/ dir for an
-        # editable checkout that predates the move.
+        # from an installed wheel.
         here = os.path.dirname(os.path.abspath(__file__))
-        pkg = os.path.join(os.path.dirname(here), "data", "injection_model.joblib")
-        if os.path.exists(pkg):
-            return pkg
-        repo = os.path.join(
-            os.path.dirname(os.path.dirname(here)), "data", "injection_model.joblib")
-        return repo if os.path.exists(repo) else pkg
+        return os.path.join(os.path.dirname(here), "data", "injection_model.npz")
 
     def load_model(self, path: str, verify: bool = True) -> InjectionClassifier:
-        """Load a pickled model.
+        """Load model weights, fail-closed on any integrity problem.
 
-        ``joblib.load`` unpickles arbitrary objects, so a tampered/untrusted model
-        file is a code-execution sink.  When a sibling ``<path>.sha256`` manifest
-        exists it is verified first and a mismatch raises
-        :class:`ModelIntegrityError` (fail-closed - the caller retrains rather
-        than executing an unknown pickle).  A scikit-learn version mismatch or a
-        feature-dimension mismatch also raises, so a silently-invalid model can't
-        be used for live security decisions.
+        The artifact is a plain ``.npz`` loaded with ``allow_pickle=False``, so it
+        cannot execute code even if an attacker replaces the file - unlike the
+        pickled estimator this used to be.  A sibling ``<path>.sha256`` manifest
+        is verified first when present, and the weight vector must match the
+        feature extractor's dimension, so a silently-invalid model can never be
+        used for a live security decision.
         """
-        import joblib
-
         manifest = path + ".sha256"
         if verify and os.path.exists(manifest):
             with open(manifest, encoding="utf-8") as fh:
@@ -99,24 +131,28 @@ class InjectionClassifier:
                     f"model integrity check failed for {path}: "
                     f"expected {expected[:12]}..., got {actual[:12]}...")
 
-        with warnings.catch_warnings():
-            # A cross-version pickle is not trustworthy for security decisions.
-            warnings.simplefilter("error", InconsistentVersionWarning)
-            try:
-                model = joblib.load(path)
-            except InconsistentVersionWarning as exc:
-                raise ModelIntegrityError(
-                    f"model at {path} was pickled by an incompatible "
-                    f"scikit-learn version: {exc}") from exc
+        try:
+            with np.load(path, allow_pickle=False) as data:
+                fmt = int(data["format"][0])
+                coef = np.asarray(data["coef"], dtype=np.float64).ravel()
+                intercept = float(np.asarray(data["intercept"]).ravel()[0])
+        except ModelIntegrityError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - any malformed artifact fails closed
+            raise ModelIntegrityError(f"could not read model at {path}: {exc}") from exc
+
+        if fmt != MODEL_FORMAT:
+            raise ModelIntegrityError(
+                f"model format {fmt} != supported format {MODEL_FORMAT}; retrain")
 
         expected_dim = self.extractor.n_features
-        n_in = getattr(model, "n_features_in_", None)
-        if n_in is not None and n_in != expected_dim:
+        if coef.shape[0] != expected_dim:
             raise ModelIntegrityError(
-                f"model feature dimension {n_in} != extractor dimension "
+                f"model feature dimension {coef.shape[0]} != extractor dimension "
                 f"{expected_dim}; the feature pipeline has changed - retrain")
 
-        self.model = model
+        self._coef = coef
+        self._intercept = intercept
         self._fitted = True
         return self
 

@@ -61,10 +61,19 @@ Out of scope (documented limitations, not vulnerabilities):
 
 ## Handling of the model artifact
 
-The shipped classifier (`aegis/data/injection_model.joblib`) is a pickled
-scikit-learn model. `joblib.load` executes arbitrary objects, so:
+The shipped classifier (`aegis/data/injection_model.npz`) is a **plain array
+file**, not a pickled estimator. This is deliberate:
 
-- the loader verifies a `sha256` manifest before unpickling and refuses a
-  tampered or cross-version artifact (`ModelIntegrityError`);
-- never point AEGIS at an untrusted model file. Regenerate the artifact yourself
-  with `python -m aegis.sanitizer.train` if you don't trust the shipped one.
+- `np.load(..., allow_pickle=False)` **cannot execute code**, so a replaced or
+  tampered model file is not a remote-code-execution sink the way a
+  `joblib`/`pickle` artifact would be;
+- the loader still verifies a `sha256` manifest before reading, and rejects any
+  artifact whose weight vector does not match the feature extractor's dimension
+  (`ModelIntegrityError`, fail-closed — the caller retrains rather than scoring
+  with an unknown model);
+- because it stores only weights, the artifact is portable across
+  scikit-learn/numpy versions. scikit-learn is used for *training* only;
+  inference is a dot product plus a sigmoid.
+
+Regenerate the artifact yourself with `python -m aegis.sanitizer.train` if you
+prefer not to trust the shipped one — training is deterministic (fixed seed).
