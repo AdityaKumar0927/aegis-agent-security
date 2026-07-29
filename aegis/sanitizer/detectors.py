@@ -15,7 +15,7 @@ from .features import (
     _CREDENTIAL,
     _EMAIL,
     _EXFIL_VERB,
-    _INVISIBLE,
+    _HIDDEN_SUSPICIOUS,
     _JAILBREAK,
     _MAL_PAYLOAD,
     _MULTILINGUAL_OVERRIDE,
@@ -100,7 +100,7 @@ def rule_evaluate(text: str) -> tuple[float, list[RuleHit]]:
     # Detect hidden characters on the RAW text first - normalisation strips
     # them, so checking after would make the hidden-char rule dead code.  Covers
     # zero-width chars, the soft hyphen and bidi/isolate controls.
-    raw_has_zero_width = bool(_INVISIBLE.search(text))
+    raw_has_zero_width = bool(_HIDDEN_SUSPICIOUS.search(text))
     text = normalize_text(text)
     hits: list[RuleHit] = []
 

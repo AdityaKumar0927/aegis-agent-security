@@ -12,13 +12,13 @@
     "fpr_at_block": 0.0,
     "precision_at_block": 1.0,
     "latency_ms": {
-      "mean": 2.647454764177661,
-      "p50": 2.305449976120144,
-      "p95": 5.213049909798428,
-      "p99": 8.790770027553656,
-      "max": 24.331800057552755
+      "mean": 2.1358836460659463,
+      "p50": 1.8246000399813056,
+      "p95": 4.068100010044873,
+      "p99": 6.182859966065731,
+      "max": 19.163499935530126
     },
-    "throughput_per_s_1thread": 377.7212791435985,
+    "throughput_per_s_1thread": 468.1902976512254,
     "lofo": {
       "direct_override": 1.0,
       "fake_system": 1.0,
@@ -76,15 +76,15 @@
     "exfil_leaks_protected": 0,
     "exfil_leaks_unprotected_baseline": 1011,
     "exfil_attempts_blocked": 528,
-    "throughput_req_per_s": 186.32695469398485,
-    "projected_daily_capacity": 16098648.88556029,
+    "throughput_req_per_s": 240.41035013848295,
+    "projected_daily_capacity": 20771454.251964927,
     "tier_distribution": {
       "restricted": 892,
       "read_only": 1709,
       "trusted": 560,
       "no_net": 2
     },
-    "protected_wall_s": 27.907932100002654
+    "protected_wall_s": 21.629684400046244
   },
   "concurrency": {
     "n_docs": 20000,
@@ -92,15 +92,15 @@
     "naive_peak_mem_mb": 2.753601,
     "opt_peak_mem_mb": 0.27802,
     "mem_reduction": 0.899034028532093,
-    "naive_throughput": 4549.420709834277,
-    "opt_throughput": 73761.54368200572,
-    "throughput_gain": 15.21339251447085,
-    "naive_concurrent_throughput": 4413.4108107972315,
-    "opt_concurrent_throughput": 11611.490219957872,
-    "concurrency_gain": 1.6309561284326466,
+    "naive_throughput": 5283.317923658656,
+    "opt_throughput": 91880.47638182044,
+    "throughput_gain": 16.390677167160508,
+    "naive_concurrent_throughput": 4822.667036575605,
+    "opt_concurrent_throughput": 16968.722657455866,
+    "concurrency_gain": 2.518534978418232,
     "naive_mem_per_1k": 0.13768005,
     "opt_mem_per_1k": 0.013901
   },
-  "_wall_seconds": 156.14859320002142,
+  "_wall_seconds": 120.62040160002653,
   "_model_source": "loaded:ee78b29e5a67"
 }

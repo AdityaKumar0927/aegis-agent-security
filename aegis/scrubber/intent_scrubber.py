@@ -138,7 +138,7 @@ class NaiveIntentScrubber:
                 if p.search(probe):
                     flagged = True
                     break
-            if flagged and ln.strip():
+            if flagged and ln.strip():   # noqa: SIM102 - mirrors optimised path
                 redactions.append(ln)
                 chars_removed += len(ln)
                 cleaned_lines.append(REDACTION)
@@ -219,7 +219,11 @@ class IntentScrubber:
         redactions: list[str] = []
         out: list[str] = []
         for ln in norm.split("\n"):
-            if ln.strip() and any(p.search(_match_view(ln)) for p in _COMPILED):
+            # Normalise ONCE per line, not once per pattern: the generator form
+            # `any(p.search(_match_view(ln)) ...)` re-ran the whole normalisation
+            # for every pattern in the set.
+            probe = _match_view(ln) if ln.strip() else ""
+            if probe and any(p.search(probe) for p in _COMPILED):
                 out.append(REDACTION)
                 redactions.append(ln)
                 removed += 1

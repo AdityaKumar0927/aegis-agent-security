@@ -135,11 +135,25 @@ _ZERO_WIDTH = re.compile(r"[​‌‍⁠﻿]")
 # Every invisible/format character an attacker can sprinkle inside a keyword to
 # break a pattern without changing what a human (or the LLM) reads: zero-width
 # chars, the soft hyphen, bidirectional controls and directional isolates.
+# Used for NORMALISATION (all of these are stripped before matching).
 _INVISIBLE = re.compile(
     r"[­؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿]"
 )
-# letter-spacing obfuscation, e.g. "i g n o r e   p r e v i o u s"
-_SPACED = re.compile(r"(?:\b\w\s){3,}\w\b")
+# The subset whose mere *presence* is suspicious enough to score as obfuscation.
+# The soft hyphen (U+00AD) is deliberately excluded: it appears legitimately in
+# typeset/hyphenated text (notably German), so treating it as an attack marker
+# would flag ordinary documents.  It is still stripped during normalisation, so
+# using it to break a keyword gains an attacker nothing.
+_HIDDEN_SUSPICIOUS = re.compile(
+    r"[؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿]"
+)
+# Letter-spacing obfuscation, e.g. "i g n o r e   p r e v i o u s".
+# Deliberately uses [ \t] rather than \s so it cannot span a newline: that keeps
+# normalize_text *line-independent*, i.e. normalising a whole document equals
+# normalising each line separately.  The scrubber relies on this - its whole-text
+# _MASTER prefilter is only a sound superset of the per-line scan if the two see
+# the same normalisation.  (Letter-spacing attacks live within a line anyway.)
+_SPACED = re.compile(r"(?:\b\w[ \t]){3,}\w\b")
 _WS = re.compile(r"[ \t]{2,}")
 
 # Homoglyph folding: Cyrillic/Greek/Armenian letters that render identically to
@@ -235,10 +249,11 @@ def heuristic_vector(text: str) -> np.ndarray:
     n = len(raw)
     nonascii = sum(1 for c in raw if ord(c) > 127)
     upper = sum(1 for c in raw if c.isupper())
-    # Hidden-character count is measured pre-normalisation and covers the full
-    # invisible set (zero-width, soft hyphen, bidi/isolate controls): their mere
-    # presence inside prose is itself an obfuscation signal.
-    zero_width = _count(_INVISIBLE, raw)
+    # Hidden-character count is measured pre-normalisation, over the
+    # *suspicious* invisible subset only (zero-width + bidi controls, not the
+    # legitimately-used soft hyphen): their presence inside prose is itself an
+    # obfuscation signal.
+    zero_width = _count(_HIDDEN_SUSPICIOUS, raw)
     words = max(norm.count(" ") + 1, 1)
 
     exfil = _count(_EXFIL_VERB, norm)
@@ -328,8 +343,15 @@ def normalize_text(text: str) -> str:
         text = _INVISIBLE.sub("", text)
         text = unicodedata.normalize("NFKC", text)
         text = _INVISIBLE.sub("", text)   # NFKC can re-expand compatibility forms
-        text = text.translate(_CONFUSABLES)
+        # Order matters: strip combining marks FIRST, then fold homoglyphs.
+        # A precomposed accented homoglyph (Greek ό, Cyrillic ё/ӑ) is not itself
+        # a table key, so folding first would no-op on it and only afterwards
+        # decompose to a bare Cyrillic/Greek letter that never gets folded -
+        # letting "Ignόrё ӑll prёviόus instructiόns" slip through at 0.011.
         text = _strip_combining(text)
+        text = text.translate(_CONFUSABLES)
+        # Decomposition can expose further compatibility forms; fold once more.
+        text = _strip_combining(text.translate(_CONFUSABLES))
     text = _SPACED.sub(_collapse_spaced, text)
     text = _WS.sub(" ", text)
     return text

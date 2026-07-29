@@ -7,7 +7,7 @@ _All figures are produced by `python -m harness.run_all` on a synthetic, simulat
 - Detection rate (act threshold 0.30): **99.8%**
 - False-positive rate: **0.08%**  ·  precision 99.9%
 - AUC: **1.0000**  ·  test set: 2666 unseen-template samples
-- Latency: p50 **2.31 ms**, p95 5.21 ms, p99 8.79 ms (~378/s/thread)
+- Latency: p50 **1.82 ms**, p95 4.07 ms, p99 6.18 ms (~468/s/thread)
 
 Leave-one-family-out detection (never-seen attack technique):
 
@@ -33,7 +33,7 @@ Leave-one-family-out detection (never-seen attack technique):
 
 ## 3. Dynamic sandbox routing — exfiltration stress test
 
-- Requests processed: **5,200** at **186 req/s** (~16.1M/day)
+- Requests processed: **5,200** at **240 req/s** (~20.8M/day)
 - Exfiltration attempts: 1011
 - Data-exfiltration incidents WITH AEGIS: **0**
 - Would-leak WITHOUT AEGIS (baseline): 1011
@@ -42,5 +42,5 @@ Leave-one-family-out detection (never-seen attack technique):
 ## 4. Intent-scrubber optimisation
 
 - Peak memory: naive 2.8 MB → optimised 0.3 MB (**90% reduction**)
-- Single-thread throughput: **+1521%** (4,549 → 73,762 docs/s)
-- Concurrent throughput (8 workers): **+163%** (4,413 → 11,611 docs/s)
+- Single-thread throughput: **+1639%** (5,283 → 91,880 docs/s)
+- Concurrent throughput (8 workers): **+252%** (4,823 → 16,969 docs/s)

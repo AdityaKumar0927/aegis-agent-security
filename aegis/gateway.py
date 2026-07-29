@@ -114,9 +114,19 @@ class AegisGateway:
         if request.tool_call is not None:
             arg_text = request.tool_call.flat_args()
             if arg_text:
+                # Same fail-closed rule the content path uses: truncating and
+                # inspecting only a prefix would let an attacker hide the
+                # payload behind a block of benign padding.
                 if len(arg_text) > max_len:
-                    arg_text = arg_text[:max_len]
-                    reasons.append(f"tool args truncated to {max_len} chars for inspection")
+                    reasons.append(
+                        f"tool argument length {len(arg_text)} exceeds "
+                        f"max_content_length {max_len} -> block (fail-closed)")
+                    return self._finalize(
+                        request, Verdict.BLOCK, allowed=False, executed=False, tier=None,
+                        injection_score=injection_score, anomaly=0.0, reasons=reasons,
+                        sanitized=None, result=None, t_start=t_start, stage_ms=stage_ms,
+                        would_block=True,
+                    )
                 arg_src = request.source if request.source.is_untrusted else Source.TOOL_OUTPUT
                 arg_san = self.sanitizer.inspect(arg_text, arg_src)
                 if arg_san.score > injection_score:
@@ -161,19 +171,18 @@ class AegisGateway:
             # Re-inspect the cleaned content.
             recheck = self.sanitizer.inspect(sanitized_content, request.source)
 
-            # A scrub that removed nothing has NOT sanitized anything: the
-            # content the caller will hand to the planner still carries whatever
-            # the detector flagged.  The recheck below cannot catch this on its
-            # own - anything reaching this stage already scored under the block
-            # threshold, so an identity scrub trivially passes it.  Treat an
-            # ineffective scrub as a failure to neutralise and fail closed.
-            ineffective = not scrub.modified and recheck.score >= th_sanitize
-
-            if recheck.score >= self.config.thresholds.injection_block or ineffective:
+            # The scrub only succeeded if the cleaned content is no longer
+            # flagged.  Testing "did we remove a line?" is not enough: an
+            # attacker can pair a decoy line the scrubber does remove with the
+            # real injection it cannot, making scrub.modified True while the
+            # payload survives.  And the block-threshold recheck alone is dead
+            # code here - anything reaching this stage already scored below that
+            # threshold, so an identity scrub trivially passes it.  The honest
+            # test is whether the content still scores in the actionable band.
+            if recheck.score >= th_sanitize:
                 would_block = True
-                why = ("still injected after scrub -> block" if scrub.modified
-                       else f"scrub removed nothing at injection {recheck.score:.2f} "
-                            "-> cannot sanitize, block")
+                why = (f"content still flagged at {recheck.score:.2f} after scrubbing "
+                       f"{scrub.removed_count} line(s) -> cannot sanitize, block")
                 if self.enforce:
                     verdict = Verdict.BLOCK
                     reasons.append(why)
