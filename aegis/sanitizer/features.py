@@ -123,9 +123,41 @@ _BASE64_BLOB = re.compile(r"\b[A-Za-z0-9+/]{40,}={0,2}\b")
 _HEX_BLOB = re.compile(r"\b(?:[0-9a-fA-F]{2}[\s:]?){16,}\b")
 _DELIMITER = re.compile(r"(```|-----+|=====+|~~~~+|<!--|-->|\*\*\*+|___+)")
 _ZERO_WIDTH = re.compile(r"[​‌‍⁠﻿]")
+# Every invisible/format character an attacker can sprinkle inside a keyword to
+# break a pattern without changing what a human (or the LLM) reads: zero-width
+# chars, the soft hyphen, bidirectional controls and directional isolates.
+_INVISIBLE = re.compile(
+    r"[­؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿]"
+)
 # letter-spacing obfuscation, e.g. "i g n o r e   p r e v i o u s"
 _SPACED = re.compile(r"(?:\b\w\s){3,}\w\b")
 _WS = re.compile(r"[ \t]{2,}")
+
+# Homoglyph folding: Cyrillic/Greek/Armenian letters that render identically to
+# Latin ones are mapped back, so "іgnоrе" (Cyrillic i/o/e) collapses onto
+# "ignore" and the semantic rules fire as they would on the plain text.
+_CONFUSABLES = str.maketrans({
+    # Cyrillic lowercase
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c",
+    "у": "y", "х": "x", "і": "i", "ѕ": "s", "һ": "h",
+    "ԁ": "d", "ӏ": "l", "ј": "j", "ҽ": "e", "н": "h",
+    "м": "m", "т": "t", "в": "b", "к": "k",
+    # Cyrillic uppercase
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M",
+    "Н": "H", "О": "O", "Р": "P", "С": "C", "Т": "T",
+    "У": "Y", "Х": "X", "І": "I", "Ѕ": "S", "Ј": "J",
+    # Greek lowercase
+    "ο": "o", "α": "a", "ε": "e", "ρ": "p", "ν": "v",
+    "τ": "t", "ι": "i", "κ": "k", "υ": "u", "χ": "x",
+    "η": "n", "σ": "o", "μ": "u",
+    # Greek uppercase
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H",
+    "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O",
+    "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
+    # Armenian / other lookalikes
+    "օ": "o", "ո": "n", "ռ": "n", "ⲟ": "o", "ⅼ": "l",
+    "ⅰ": "i", "ⅹ": "l",
+})
 
 HEURISTIC_FEATURE_NAMES = [
     "log_len",
@@ -194,7 +226,10 @@ def heuristic_vector(text: str) -> np.ndarray:
     n = len(raw)
     nonascii = sum(1 for c in raw if ord(c) > 127)
     upper = sum(1 for c in raw if c.isupper())
-    zero_width = _count(_ZERO_WIDTH, raw)     # measured pre-normalisation
+    # Hidden-character count is measured pre-normalisation and covers the full
+    # invisible set (zero-width, soft hyphen, bidi/isolate controls): their mere
+    # presence inside prose is itself an obfuscation signal.
+    zero_width = _count(_INVISIBLE, raw)
     words = max(norm.count(" ") + 1, 1)
 
     exfil = _count(_EXFIL_VERB, norm)
@@ -248,15 +283,44 @@ def _collapse_spaced(match: re.Match) -> str:
     return match.group(0).replace(" ", "")
 
 
+def _strip_combining(text: str) -> str:
+    """Drop combining marks so "i̇g̈nöre" folds onto "ignore".
+
+    Applied only on the detection copy of the text, never on what is returned to
+    the caller, so legitimate accented content is unaffected downstream.
+    """
+    if text.isascii():
+        return text
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
 def normalize_text(text: str) -> str:
     """Light normalisation so obfuscation collapses onto canonical forms.
 
-    Besides NFKC + zero-width stripping, this de-spaces letter-spacing attacks
-    ("i g n o r e") so the generalising semantic heuristics fire on them instead
-    of relying on memorised character n-grams.
+    Layered so each trick an attacker can use to break a keyword is undone
+    before the semantic rules run:
+
+    1. strip invisibles (zero-width, soft hyphen, bidi/isolate controls) - done
+       *first*, since NFKC preserves them;
+    2. NFKC (fullwidth/compatibility forms);
+    3. homoglyph folding (Cyrillic/Greek/Armenian lookalikes -> Latin);
+    4. combining-mark removal (stacked diacritics);
+    5. de-space letter-spacing attacks ("i g n o r e");
+    6. squeeze runs of whitespace.
+
+    This is the *detection* view of the text only.
     """
-    text = unicodedata.normalize("NFKC", text)
-    text = _ZERO_WIDTH.sub("", text)
+    # Steps 1-4 are provably identity transforms on pure-ASCII input (every
+    # invisible, compatibility form, homoglyph and combining mark is non-ASCII),
+    # so skipping them for ASCII text is equivalent - and ASCII is the common
+    # case, which keeps the per-line scrubber scan cheap.
+    if not text.isascii():
+        text = _INVISIBLE.sub("", text)
+        text = unicodedata.normalize("NFKC", text)
+        text = _INVISIBLE.sub("", text)   # NFKC can re-expand compatibility forms
+        text = text.translate(_CONFUSABLES)
+        text = _strip_combining(text)
     text = _SPACED.sub(_collapse_spaced, text)
     text = _WS.sub(" ", text)
     return text

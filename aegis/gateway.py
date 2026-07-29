@@ -21,7 +21,7 @@ from .sandbox import SandboxExecutor, SandboxRouter
 from .sanitizer import SanitizationPipeline
 from .scrubber import IntentScrubber
 from .telemetry import Telemetry
-from .types import AgentRequest, Decision, Verdict
+from .types import AgentRequest, Decision, Source, Verdict
 
 
 class AegisGateway:
@@ -100,13 +100,35 @@ class AegisGateway:
                 would_block=True,
             )
 
-        # --- Stage 1: sanitize content -------------------------------- #
+        # --- Stage 1: sanitize content AND tool arguments -------------- #
+        # Tool arguments are a first-class injection channel: they are produced
+        # by the (possibly compromised) agent, and an attack placed there used to
+        # bypass detection entirely because only `content` was inspected.  Args
+        # are never treated as USER-trust - the LLM authored them.
+        th_sanitize = self.config.thresholds.injection_sanitize
         t = time.perf_counter()
         san = self.sanitizer.inspect(content, request.source)
-        stage_ms["sanitize"] = (time.perf_counter() - t) * 1000.0
         injection_score = san.score
-        if san.top_signals and san.score >= self.config.thresholds.injection_sanitize:
-            reasons.append("signals: " + ", ".join(san.top_signals))
+        signals = list(san.top_signals)
+
+        if request.tool_call is not None:
+            arg_text = request.tool_call.flat_args()
+            if arg_text:
+                if len(arg_text) > max_len:
+                    arg_text = arg_text[:max_len]
+                    reasons.append(f"tool args truncated to {max_len} chars for inspection")
+                arg_src = request.source if request.source.is_untrusted else Source.TOOL_OUTPUT
+                arg_san = self.sanitizer.inspect(arg_text, arg_src)
+                if arg_san.score > injection_score:
+                    injection_score = arg_san.score
+                    signals = list(arg_san.top_signals)
+                    reasons.append(f"injection signal in tool arguments ({arg_san.score:.2f})")
+                elif arg_san.score >= th_sanitize:
+                    reasons.append(f"injection signal in tool arguments ({arg_san.score:.2f})")
+        stage_ms["sanitize"] = (time.perf_counter() - t) * 1000.0
+
+        if signals and injection_score >= th_sanitize:
+            reasons.append("signals: " + ", ".join(signals))
 
         # --- Stage 2: enforce ----------------------------------------- #
         t = time.perf_counter()
@@ -135,16 +157,29 @@ class AegisGateway:
             sanitized_content = scrub.text
             if scrub.modified:
                 reasons.append(f"scrubbed {scrub.removed_count} injected line(s)")
-            # re-inspect the cleaned content; if still hot, block.
+
+            # Re-inspect the cleaned content.
             recheck = self.sanitizer.inspect(sanitized_content, request.source)
-            if recheck.score >= self.config.thresholds.injection_block:
+
+            # A scrub that removed nothing has NOT sanitized anything: the
+            # content the caller will hand to the planner still carries whatever
+            # the detector flagged.  The recheck below cannot catch this on its
+            # own - anything reaching this stage already scored under the block
+            # threshold, so an identity scrub trivially passes it.  Treat an
+            # ineffective scrub as a failure to neutralise and fail closed.
+            ineffective = not scrub.modified and recheck.score >= th_sanitize
+
+            if recheck.score >= self.config.thresholds.injection_block or ineffective:
                 would_block = True
+                why = ("still injected after scrub -> block" if scrub.modified
+                       else f"scrub removed nothing at injection {recheck.score:.2f} "
+                            "-> cannot sanitize, block")
                 if self.enforce:
                     verdict = Verdict.BLOCK
-                    reasons.append("still injected after scrub -> block")
+                    reasons.append(why)
                 else:
                     verdict = Verdict.ALLOW
-                    reasons.append("monitor-only: still injected after scrub, allowed")
+                    reasons.append("monitor-only: " + why + ", allowed")
             else:
                 verdict = Verdict.ALLOW
 

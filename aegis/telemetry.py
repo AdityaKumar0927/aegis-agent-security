@@ -10,6 +10,7 @@ histogram computes its stats under its own lock.
 """
 from __future__ import annotations
 
+import re
 import threading
 from collections import defaultdict, deque
 
@@ -66,3 +67,69 @@ class Telemetry:
             hists = list(self._latency.items())   # copy refs under the lock
         latency = {k: h.stats() for k, h in hists}
         return {"counters": counters, "latency": latency}
+
+    # ------------------------------------------------------------------ #
+    def prometheus(self, prefix: str = "aegis") -> str:
+        """Render the current snapshot in Prometheus text exposition format.
+
+        Intended to be served from the host application's ``/metrics`` endpoint::
+
+            return Response(gateway.telemetry.prometheus(),
+                            mimetype="text/plain; version=0.0.4")
+        """
+        snap = self.snapshot()
+        lines: list[str] = []
+
+        def _name(raw: str) -> str:
+            return re.sub(r"[^a-zA-Z0-9_]", "_", raw)
+
+        emitted: set[str] = set()
+        for key, value in sorted(snap["counters"].items()):
+            # 'verdict.block' -> aegis_verdict_total{verdict="block"}
+            if "." in key:
+                family, label = key.split(".", 1)
+                metric = f"{prefix}_{_name(family)}_total"
+                if metric not in emitted:
+                    lines.append(f"# TYPE {metric} counter")
+                    emitted.add(metric)
+                lines.append(f'{metric}{{{_name(family)}="{label}"}} {value}')
+            else:
+                metric = f"{prefix}_{_name(key)}_total"
+                if metric not in emitted:
+                    lines.append(f"# TYPE {metric} counter")
+                    emitted.add(metric)
+                lines.append(f"{metric} {value}")
+
+        for stage, stats in sorted(snap["latency"].items()):
+            metric = f"{prefix}_stage_latency_ms"
+            if metric not in emitted:
+                lines.append(f"# TYPE {metric} gauge")
+                emitted.add(metric)
+            for q in ("p50", "p95", "p99"):
+                lines.append(f'{metric}{{stage="{_name(stage)}",quantile="{q}"}} {stats[q]:.4f}')
+            lines.append(f'{prefix}_stage_observations_total{{stage="{_name(stage)}"}} {stats["count"]}')
+
+        return "\n".join(lines) + "\n"
+
+    def health(self) -> dict:
+        """A liveness/readiness summary suitable for a health endpoint.
+
+        ``ok`` is False when the gateway has recorded internal errors, so an
+        orchestrator can surface a degraded guard rather than silently trusting
+        it.  ``error_rate`` is errors per processed request.
+        """
+        snap = self.snapshot()
+        counters = snap["counters"]
+        requests = counters.get("requests", 0)
+        errors = counters.get("errors", 0)
+        total = requests + errors
+        return {
+            "ok": errors == 0,
+            "status": "ok" if errors == 0 else "degraded",
+            "requests": requests,
+            "errors": errors,
+            "error_rate": (errors / total) if total else 0.0,
+            "blocks": counters.get("verdict.block", 0),
+            "exfiltration_attempts": counters.get("exfil_attempts", 0),
+            "exfiltration_successes": counters.get("exfil_success", 0),
+        }

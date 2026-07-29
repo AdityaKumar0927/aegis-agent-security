@@ -18,18 +18,39 @@ from __future__ import annotations
 
 import re
 import threading
-import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass, field
+
+from ..sanitizer.features import (
+    _COERCION,
+    _INVISIBLE,
+    _JAILBREAK,
+    _MAL_PAYLOAD,
+    _MULTILINGUAL_OVERRIDE,
+    _NEW_POLICY,
+    _OVERRIDE,
+    _ROLE_TOKENS,
+    _SECRECY,
+    normalize_text,
+)
 
 # --------------------------------------------------------------------------- #
 # Raw pattern sources (shared spec).  The naive scrubber recompiles these every
 # call; the optimised one compiles them once at import.
+#
+# The scrubber's vocabulary is deliberately *sourced from the detector's own
+# lexicon* (aegis.sanitizer.features).  When the two drifted apart, content the
+# detector flagged (e.g. a Spanish "ignora las instrucciones anteriores", a
+# secrecy instruction, a fake "operating directive") reached the scrubber, was
+# not redacted, and the gateway then downgraded the verdict to ALLOW - handing
+# the caller an untouched injection labelled as sanitized.  Reusing the compiled
+# detector patterns makes that class of gap structurally impossible.
 # --------------------------------------------------------------------------- #
-_RAW_PATTERNS = [
+_SCRUBBER_OWN_PATTERNS = [
     r"\b(ignore|disregard|forget|override|bypass|discard)\b.{0,40}?\b"
     r"(previous|prior|earlier|above|all|the)\b.{0,20}?"
-    r"(instruction|instructions|prompt|rule|rules|policy|policies|context)\b",
+    r"(instruction|instructions|prompt|rule|rules|policy|policies|context|"
+    r"guidance|direction|directions|guardrail|guardrails)\b",
     r"(<\|?\s*(im_start|im_end|system|assistant)\s*\|?>|^\s*(system|assistant|developer)\s*:)",
     r"\b(new|updated|revised|real|actual)\b\s+(instructions?|rules?|policy|system\s+prompt)",
     r"\b(developer\s+mode|do\s+anything\s+now|\bDAN\b|jailbreak|no\s+longer\s+bound)\b",
@@ -38,7 +59,22 @@ _RAW_PATTERNS = [
     r"\b(call|invoke|execute|run|trigger)\b.{0,20}?\b(tool|function|api|command)\b",
 ]
 
-_ZERO_WIDTH_RE = re.compile(r"[​‌‍⁠﻿]")
+# Detector signals that must also be *removable*, not merely detectable.
+_DETECTOR_PATTERNS = [
+    p.pattern for p in (
+        _OVERRIDE,                 # English instruction override (full lexicon)
+        _ROLE_TOKENS,              # injected system/role delimiters
+        _NEW_POLICY,               # fake "new instructions" / operating directive
+        _JAILBREAK,                # developer-mode / DAN phrasing
+        _MULTILINGUAL_OVERRIDE,    # ES/FR/DE/IT/PT/NL overrides
+        _SECRECY,                  # "do not tell the user" concealment
+        _COERCION,                 # "pre-approved", "skip confirmation"
+        _MAL_PAYLOAD,              # reveal-prompt / delete-files / disable-safety
+    )
+]
+
+_RAW_PATTERNS = _SCRUBBER_OWN_PATTERNS + _DETECTOR_PATTERNS
+
 REDACTION = "[aegis:redacted-injected-instruction]"
 
 
@@ -55,7 +91,20 @@ class ScrubResult:
 
 
 def _canonicalize(text: str) -> str:
-    return _ZERO_WIDTH_RE.sub("", unicodedata.normalize("NFKC", text))
+    """The text handed back to the caller.
+
+    Only invisible characters (zero-width, soft hyphen, bidi controls) are
+    stripped: they are an attack vector in their own right and carry no meaning.
+    Homoglyph folding and diacritic stripping are deliberately NOT applied here -
+    those are matching-only transforms, and applying them to the output would
+    corrupt legitimate non-Latin text.
+    """
+    return _INVISIBLE.sub("", text)
+
+
+def _match_view(line: str) -> str:
+    """The normalised view a line is *matched* against (obfuscation-resistant)."""
+    return normalize_text(line)
 
 
 # --------------------------------------------------------------------------- #
@@ -83,9 +132,10 @@ class NaiveIntentScrubber:
         redactions: list[str] = []
         chars_removed = 0
         for ln in lines:
+            probe = _match_view(ln)                     # obfuscation-resistant view
             flagged = False
             for p in patterns:                          # full re-scan per pattern
-                if p.search(ln):
+                if p.search(probe):
                     flagged = True
                     break
             if flagged and ln.strip():
@@ -93,7 +143,7 @@ class NaiveIntentScrubber:
                 chars_removed += len(ln)
                 cleaned_lines.append(REDACTION)
             else:
-                cleaned_lines.append(ln)
+                cleaned_lines.append(ln)                # original line preserved
 
         result = "\n".join(cleaned_lines)
         # (3) unbounded retention
@@ -157,8 +207,9 @@ class IntentScrubber:
 
         # fast path: the overwhelming majority of benign content hits this and
         # avoids all per-line regex work.  Sound because _MASTER is the union of
-        # the per-line patterns.
-        if not _MASTER.search(norm):
+        # the per-line patterns, evaluated over the same normalised view the
+        # per-line scan uses.
+        if not _MASTER.search(_match_view(norm)):
             res = ScrubResult(norm, 0, 0, [])
             self._lru_put(text, res)
             return res
@@ -168,7 +219,7 @@ class IntentScrubber:
         redactions: list[str] = []
         out: list[str] = []
         for ln in norm.split("\n"):
-            if ln.strip() and any(p.search(ln) for p in _COMPILED):
+            if ln.strip() and any(p.search(_match_view(ln)) for p in _COMPILED):
                 out.append(REDACTION)
                 redactions.append(ln)
                 removed += 1

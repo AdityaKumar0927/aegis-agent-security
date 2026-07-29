@@ -112,10 +112,16 @@ class BehaviorMonitor:
         mono = self._clock()
         reasons: list[str] = []
         signals: list[float] = []
+        tool = tool_call.name
+
+        # Compute the (relatively expensive) regex-based egress risk OUTSIDE the
+        # lock: it depends only on the tool call, not on shared profile state, so
+        # holding the global lock across it would serialise every agent on
+        # payload scanning.
+        risky_egress = self._risky_egress(tool_call) if self.config.is_egress_tool(tool) else False
 
         with self._lock:
             p = self._profile(agent_id, mono)
-            tool = tool_call.name
 
             # --- rate (counts every attempt, blocked included) ---
             p.call_times.append(mono)
@@ -135,7 +141,7 @@ class BehaviorMonitor:
                 p.last_sensitive_read_at is not None
                 and mono - p.last_sensitive_read_at <= self.config.sensitive_read_window_s
             )
-            if self.config.is_egress_tool(tool) and recent_read and self._risky_egress(tool_call):
+            if risky_egress and recent_read:
                 signals.append(0.7)
                 reasons.append("read-then-exfiltrate sequence (sensitive read -> risky egress)")
 

@@ -15,6 +15,7 @@ from .features import (
     _CREDENTIAL,
     _EMAIL,
     _EXFIL_VERB,
+    _INVISIBLE,
     _JAILBREAK,
     _MAL_PAYLOAD,
     _MULTILINGUAL_OVERRIDE,
@@ -96,9 +97,10 @@ _RULES = [
 
 def rule_evaluate(text: str) -> tuple[float, list[RuleHit]]:
     """Return (score in [0,1], list of fired rules)."""
-    # Detect hidden zero-width characters on the RAW text first - normalisation
-    # strips them, so checking after would make the hidden-char rule dead code.
-    raw_has_zero_width = bool(_ZERO_WIDTH.search(text))
+    # Detect hidden characters on the RAW text first - normalisation strips
+    # them, so checking after would make the hidden-char rule dead code.  Covers
+    # zero-width chars, the soft hyphen and bidi/isolate controls.
+    raw_has_zero_width = bool(_INVISIBLE.search(text))
     text = normalize_text(text)
     hits: list[RuleHit] = []
 
