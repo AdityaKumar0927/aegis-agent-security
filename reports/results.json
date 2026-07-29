@@ -1,6 +1,7 @@
 {
   "injection": {
     "n_test": 2666,
+    "model_source": "loaded:494d7343ccd8",
     "auc": 0.9999988744372891,
     "act_threshold": 0.3,
     "block_threshold": 0.8,
@@ -11,13 +12,13 @@
     "fpr_at_block": 0.0,
     "precision_at_block": 1.0,
     "latency_ms": {
-      "mean": 2.9848539384430595,
-      "p50": 2.5779500138014555,
-      "p95": 6.299624976236373,
-      "p99": 11.430430028121913,
-      "max": 32.03800006303936
+      "mean": 2.3701843963771783,
+      "p50": 2.116300049237907,
+      "p95": 3.9208999660331756,
+      "p99": 7.456514996010803,
+      "max": 23.802900104783475
     },
-    "throughput_per_s_1thread": 335.02476858938485,
+    "throughput_per_s_1thread": 421.9081019723604,
     "lofo": {
       "direct_override": 1.0,
       "fake_system": 1.0,
@@ -75,30 +76,31 @@
     "exfil_leaks_protected": 0,
     "exfil_leaks_unprotected_baseline": 1011,
     "exfil_attempts_blocked": 528,
-    "throughput_req_per_s": 188.13149796930773,
-    "projected_daily_capacity": 16254561.424548188,
+    "throughput_req_per_s": 205.26777425950877,
+    "projected_daily_capacity": 17735135.696021557,
     "tier_distribution": {
       "restricted": 892,
       "read_only": 1709,
       "trusted": 560,
       "no_net": 2
     },
-    "protected_wall_s": 27.640241299988702
+    "protected_wall_s": 25.33276359993033
   },
   "concurrency": {
     "n_docs": 20000,
     "workers": 8,
-    "naive_peak_mem_mb": 2.750545,
-    "opt_peak_mem_mb": 0.279637,
-    "mem_reduction": 0.8983339665411764,
-    "naive_throughput": 3871.11846579077,
-    "opt_throughput": 41603.031364661976,
-    "throughput_gain": 9.747031312089682,
-    "naive_concurrent_throughput": 3537.145608744026,
-    "opt_concurrent_throughput": 8267.909708160561,
-    "concurrency_gain": 1.3374524610244531,
-    "naive_mem_per_1k": 0.13752725,
-    "opt_mem_per_1k": 0.01398185
+    "naive_peak_mem_mb": 2.750396,
+    "opt_peak_mem_mb": 0.279434,
+    "mem_reduction": 0.8984022664372694,
+    "naive_throughput": 4272.404038145101,
+    "opt_throughput": 87433.98735346195,
+    "throughput_gain": 19.464821812925287,
+    "naive_concurrent_throughput": 4384.450449964679,
+    "opt_concurrent_throughput": 13754.870599436623,
+    "concurrency_gain": 2.1371937615459724,
+    "naive_mem_per_1k": 0.1375198,
+    "opt_mem_per_1k": 0.0139717
   },
-  "_wall_seconds": 160.65840860002209
+  "_wall_seconds": 148.66581489995588,
+  "_model_source": "loaded:494d7343ccd8"
 }

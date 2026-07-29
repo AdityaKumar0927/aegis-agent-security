@@ -6,6 +6,7 @@ Writes reports/results.json and reports/RESULTS.md with the measured numbers.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -41,14 +42,22 @@ def _atomic_write(path: str, text: str) -> None:
     os.replace(tmp, path)
 
 
-def main() -> dict:
+def main(argv: list[str] | None = None) -> dict:
     _utf8_stdout()
+    ap = argparse.ArgumentParser(description="Run the full AEGIS benchmark suite.")
+    ap.add_argument("--retrain", action="store_true",
+                    help="train the model in memory from the pinned seed instead of "
+                         "loading the shipped artifact (clean-room reproduction)")
+    args = ap.parse_args(argv)
+
     print(hr("AEGIS · Agentic Execution Guardrail & Injection Shield"))
     print("Running full benchmark suite (all numbers below are freshly measured)…")
 
-    # Ensure the classifier is trained/cached before timing anything.
+    # Ensure the classifier is loaded/trained before timing anything, and record
+    # which model the run used so the reported numbers are traceable.
     from aegis.sanitizer import SanitizationPipeline
-    SanitizationPipeline.default()
+    pipe = SanitizationPipeline.default(retrain=args.retrain)
+    print(f"  model: {pipe.model_source}")
 
     t0 = time.perf_counter()
     results = {
@@ -58,6 +67,7 @@ def main() -> dict:
         "concurrency": bench_concurrency.run(),
     }
     results["_wall_seconds"] = time.perf_counter() - t0
+    results["_model_source"] = pipe.model_source
 
     os.makedirs(REPORT_DIR, exist_ok=True)
     _atomic_write(os.path.join(REPORT_DIR, "results.json"),

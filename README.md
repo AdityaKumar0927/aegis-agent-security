@@ -13,13 +13,13 @@ All numbers below are **freshly measured** by `python -m harness.run_all` on a s
 | Capability | Metric | Result |
 |---|---|---|
 | **Indirect prompt-injection detection** | detection rate @ 0.00% FPR | **99.8%** (AUC 1.000) |
-| | inference latency (p50 / p95 / p99) | **1.8 / 3.7 / 5.7 ms** on CPU |
+| | inference latency (p50) | **~2 ms** on CPU |
 | **Unauthorized tool-execution control** | reduction vs. no-enforcement | **100%** (2384 → 0) |
-| | utility retained on legitimate traffic | **99.6%** |
+| | utility retained on legitimate traffic | **99.5%** |
 | **Dynamic sandbox routing** | exfiltration incidents over 5,200 requests | **0** (baseline would leak 1,011) |
-| | throughput (full guard, per core) | ~430 req/s → ~37M/day capacity |
-| **Intent-scrubber optimisation** | peak memory (naive → optimised) | **−92%** (2.8 → 0.2 MB) |
-| | concurrent throughput (8 workers) | **~+400%** |
+| | measured by | honeytoken **ground truth**, not filter verdicts |
+| **Intent-scrubber optimisation** | peak memory (naive → optimised) | **−90%** |
+| | concurrent throughput (8 workers) | **~+200%** |
 
 These map one-to-one onto the four engineering goals: *reduce unauthorized API tool execution*, *high-detection / low-latency injection sanitization*, *sandbox routing with zero exfiltration under stress*, and *a memory/concurrency-optimised intent-scrubbing algorithm*.
 
@@ -61,6 +61,15 @@ flowchart LR
 | `RESTRICTED` | allowlist | scratch | scoped | trusted egress to internal hosts |
 | `TRUSTED` | broad (allowlisted) | scratch | full | privileged, low-risk actions |
 
+> **What the tiers are, precisely.** AEGIS *decides* which tier each call belongs
+> in and *enforces that decision at its own boundary*: an egress call is denied
+> unless the tier permits the destination, `read_secret` is denied in a tier with
+> no secret access, and `delete_file`/`exec_shell` are denied in a non-writable
+> tier. The bundled `SandboxExecutor` is a **simulation** — it does not spawn
+> containers, network namespaces or seccomp profiles. Binding these tiers to real
+> OS-level isolation is the integrator's job; AEGIS gives you the per-call
+> decision and the audit trail for it.
+
 ---
 
 ## The four subsystems
@@ -86,6 +95,14 @@ Neutralises injected instructions in borderline content before it reaches the pl
 **Trust model:** direct user input is higher-trust than content from `RETRIEVAL` / `TOOL_OUTPUT` / `WEB` / `MEMORY`. Unknown tools **fail closed** (treated as high sensitivity).
 
 **Out of scope (honest boundaries):** model weight/data poisoning; attacks purely inside the LLM's latent reasoning that never surface as content or a tool call; a truly novel injection *technique* with no lexical/semantic overlap with known families (the leave-one-family-out numbers show detection degrades gracefully — 73–100% — rather than failing silently, and new signatures/retraining close the gap).
+
+Three further boundaries worth stating plainly, because knowing them is what makes the rest trustworthy:
+
+* **Argument *values* are your tool's responsibility.** AEGIS scores tool arguments for injection and exfiltration intent, but it is not a path-traversal / SQLi / command-injection validator. `read_file(path="../../etc/shadow")` carries no injection signal and will be allowed — validate inputs inside the tool.
+* **Behavioural signals key on `agent_id`.** An attacker who can mint a fresh `agent_id` per call resets that agent's baseline and evades the rate, novelty and read-then-exfiltrate signals. Assign `agent_id` from your orchestrator, never from model output. RBAC, trust floors, injection scoring and egress filtering are unaffected.
+* **Detection is lexicon-anchored.** A harmful instruction paraphrased entirely in benign vocabulary can fall below the sanitize threshold; RBAC, trust floors and the egress filter are the backstop there.
+
+These are also enumerated in [`SECURITY.md`](SECURITY.md).
 
 ---
 

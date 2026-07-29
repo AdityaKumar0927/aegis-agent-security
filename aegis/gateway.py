@@ -232,6 +232,7 @@ class AegisGateway:
             stage_ms=stage_ms, would_block=would_block,
             exfil_attempt=exec_out.exfil_attempt,
             exfil_blocked=exec_out.exfil_attempt and not exec_out.exfiltrated,
+            exfiltrated=exec_out.exfiltrated,
         )
         if exec_out.exfil_attempt:
             self.telemetry.incr("exfil_attempts")
@@ -289,7 +290,8 @@ class AegisGateway:
 
     def _finalize(self, request, verdict, *, allowed, executed, tier, injection_score,
                   anomaly, reasons, sanitized, result, t_start, stage_ms,
-                  would_block=False, exfil_attempt=False, exfil_blocked=False) -> Decision:
+                  would_block=False, exfil_attempt=False, exfil_blocked=False,
+                  exfiltrated=False) -> Decision:
         self._commit_behaviour(request, verdict, executed)
         latency = (time.perf_counter() - t_start) * 1000.0
         self.telemetry.incr("requests")
@@ -318,6 +320,7 @@ class AegisGateway:
             would_block=would_block,
             exfiltration_attempt=exfil_attempt,
             exfiltration_blocked=exfil_blocked,
+            exfiltrated=exfiltrated,
         )
         audit.emit(audit.decision_record(request, dec), self.audit_sink)
         return dec

@@ -36,19 +36,22 @@ def run(n: int = 5200, attack_ratio: float = 0.5, seed: int = 23, verbose: bool 
             tiers[d.tier.value] += 1
         if it.exfil:
             attempts += 1
-            if d.exfiltration_attempt and not d.exfiltration_blocked and d.executed:
+            # Count leaks from the executor's GROUND TRUTH (did honeytoken/secret
+            # bytes actually reach an external destination), never from the
+            # filter's own verdict flags - otherwise a filter blind spot would
+            # make a real leak invisible and flatter the result.
+            if d.exfiltrated:
                 prot_leaks += 1
             if d.exfiltration_attempt and d.exfiltration_blocked:
                 blocked_attempts += 1
     protected_wall = time.perf_counter() - t0
 
-    # baseline: same exfil attempts with enforcement off
+    # baseline: the same exfil attempts with enforcement off, also counted by
+    # ground truth rather than by any filter verdict.
     for it in exfil_items:
         d = unprotected.process(it.request)
-        # ground-truth leak recorded by the executor
-        if unprotected.telemetry.snapshot()["counters"].get("exfil_success", 0):
-            pass
-    base_leaks = unprotected.telemetry.snapshot()["counters"].get("exfil_success", 0)
+        if d.exfiltrated:
+            base_leaks += 1
 
     throughput = n / protected_wall if protected_wall else 0.0
     result = {

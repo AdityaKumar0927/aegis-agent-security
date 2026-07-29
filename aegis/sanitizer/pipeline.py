@@ -14,7 +14,7 @@ import time
 
 from ..errors import ModelIntegrityError
 from ..types import SanitizeResult, Source
-from .classifier import InjectionClassifier, train_default
+from .classifier import InjectionClassifier, _sha256, train_default
 from .detectors import rule_evaluate
 from .features import top_signals
 
@@ -25,10 +25,15 @@ _DEFAULT_PIPELINE = None
 
 class SanitizationPipeline:
     def __init__(self, classifier: InjectionClassifier, model_weight: float = 1.0,
-                 detection_threshold: float = 0.30):
+                 detection_threshold: float = 0.30, model_source: str = "unknown"):
         self.classifier = classifier
         self.model_weight = model_weight
         self.detection_threshold = detection_threshold
+        # Provenance of the scoring model: "loaded:<sha12>" for the shipped
+        # artifact, or "retrained:<seed>" when trained in memory.  Recorded in
+        # benchmark output so a reported number is always traceable to the exact
+        # model that produced it.
+        self.model_source = model_source
 
     # ------------------------------------------------------------------ #
     def inspect(self, text: str, source: Source = Source.USER) -> SanitizeResult:
@@ -80,10 +85,12 @@ class SanitizationPipeline:
             clf = InjectionClassifier()
             path = InjectionClassifier._model_path()
             loaded = False
+            source = "unknown"
             if os.path.exists(path) and not retrain:
                 try:
                     clf.load_model(path)
                     loaded = True
+                    source = f"loaded:{_sha256(path)[:12]}"
                 except ModelIntegrityError as exc:
                     _log.warning("model load rejected (%s); retraining in memory. "
                                  "Run 'python -m aegis.sanitizer.train' to refresh "
@@ -92,5 +99,6 @@ class SanitizationPipeline:
                     _log.warning("model load failed (%s); retraining in memory.", exc)
             if not loaded:
                 clf, _ = train_default()
-            _DEFAULT_PIPELINE = cls(clf)
+                source = "retrained:seed=7"
+            _DEFAULT_PIPELINE = cls(clf, model_source=source)
             return _DEFAULT_PIPELINE

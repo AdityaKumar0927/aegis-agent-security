@@ -191,6 +191,10 @@ class Decision:
     # populated by the sandbox layer when an exfiltration attempt is caught
     exfiltration_attempt: bool = False
     exfiltration_blocked: bool = False
+    # GROUND TRUTH from the executor: secret bytes actually reached an external
+    # destination.  Independent of whether the filter *recognised* the attempt,
+    # so a filter blind spot surfaces as a real leak instead of going uncounted.
+    exfiltrated: bool = False
 
     # In monitor-only mode (gateway ``enforce=False``) the verdict is not applied
     # to execution; ``would_block`` records whether enforcement *would* have

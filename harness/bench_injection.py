@@ -74,6 +74,10 @@ def run(verbose: bool = True) -> dict:
 
     result = {
         "n_test": len(test),
+        # Which model produced these numbers, so a figure is always traceable
+        # ("loaded:<sha12>" for the shipped artifact, "retrained:seed=7" for a
+        # clean-room in-memory train).
+        "model_source": pipe.model_source,
         "auc": auc,
         "act_threshold": th.injection_sanitize,
         "block_threshold": th.injection_block,

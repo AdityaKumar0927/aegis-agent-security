@@ -44,6 +44,20 @@ Out of scope (documented limitations, not vulnerabilities):
 - detection of a genuinely novel injection *technique* with no lexical/semantic
   overlap with known families may degrade gracefully rather than catch
   everything (see the threat model in the README).
+- **argument-value validation is the tool's job, not AEGIS's.** AEGIS scores
+  tool arguments for *injection and exfiltration* intent; it is not a path
+  traversal, SQL-injection, or command-injection validator. A `read_file` call
+  with `path="../../etc/shadow"` carries no injection signal and will be
+  allowed — your tool implementation must validate its own inputs.
+- **behavioural signals are keyed on the caller-supplied `agent_id`.** An
+  attacker who can mint a fresh `agent_id` per call resets the per-agent
+  baseline and evades rate/novelty/read-then-exfiltrate detection. Assign
+  `agent_id` from a trusted source (your orchestrator), never from model output.
+  The non-behavioural guards (RBAC, trust floors, injection scoring, egress
+  filtering) are unaffected by this.
+- **detection is lexicon-anchored.** A harmful instruction paraphrased entirely
+  in benign vocabulary can score below the sanitize threshold; RBAC, trust
+  floors and the egress filter remain the backstop for those.
 
 ## Handling of the model artifact
 
