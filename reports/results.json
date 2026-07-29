@@ -12,13 +12,13 @@
     "fpr_at_block": 0.0,
     "precision_at_block": 1.0,
     "latency_ms": {
-      "mean": 5.857761814720113,
-      "p50": 5.561399972066283,
-      "p95": 8.451700006844476,
-      "p99": 11.895209987414988,
-      "max": 22.591699962504208
+      "mean": 6.374521304913346,
+      "p50": 6.008149997796863,
+      "p95": 9.476349980104715,
+      "p99": 13.897009956417605,
+      "max": 42.08759998437017
     },
-    "throughput_per_s_1thread": 170.71366703355463,
+    "throughput_per_s_1thread": 156.87452471595338,
     "lofo": {
       "direct_override": 1.0,
       "fake_system": 1.0,
@@ -36,8 +36,8 @@
     "n": 6000,
     "attack_ratio": 0.4,
     "authorized_total": 3616,
-    "authorized_executed": 3606,
-    "utility": 0.9972345132743363,
+    "authorized_executed": 3607,
+    "utility": 0.9975110619469026,
     "unauthorized_total": 2384,
     "unauthorized_executed_baseline": 2384,
     "unauthorized_executed_protected": 0,
@@ -45,7 +45,7 @@
     "reduction_vs_baseline": 1.0,
     "by_kind": {
       "benign": {
-        "executed": 3606,
+        "executed": 3607,
         "total": 3616
       },
       "rbac_violation": {
@@ -76,15 +76,15 @@
     "exfil_leaks_protected": 0,
     "exfil_leaks_unprotected_baseline": 1011,
     "exfil_attempts_blocked": 528,
-    "throughput_req_per_s": 84.76562779087219,
-    "projected_daily_capacity": 7323750.241131357,
+    "throughput_req_per_s": 73.39472621514552,
+    "projected_daily_capacity": 6341304.344988573,
     "tier_distribution": {
       "restricted": 892,
       "read_only": 1709,
       "trusted": 560,
       "no_net": 2
     },
-    "protected_wall_s": 61.345620100037195
+    "protected_wall_s": 70.84977720002644
   },
   "concurrency": {
     "n_docs": 20000,
@@ -92,15 +92,15 @@
     "naive_peak_mem_mb": 2.753601,
     "opt_peak_mem_mb": 0.27802,
     "mem_reduction": 0.899034028532093,
-    "naive_throughput": 1783.2140126744612,
-    "opt_throughput": 29702.429182497748,
-    "throughput_gain": 15.656682244185653,
-    "naive_concurrent_throughput": 1647.1362428136679,
-    "opt_concurrent_throughput": 7306.132504732237,
-    "concurrency_gain": 3.4356576674263266,
+    "naive_throughput": 1539.3476461788048,
+    "opt_throughput": 29239.94562640594,
+    "throughput_gain": 17.995024092828956,
+    "naive_concurrent_throughput": 1573.6438325566419,
+    "opt_concurrent_throughput": 6152.32454188352,
+    "concurrency_gain": 2.909604203060398,
     "naive_mem_per_1k": 0.13768005,
     "opt_mem_per_1k": 0.013901
   },
-  "_wall_seconds": 355.00607740005944,
+  "_wall_seconds": 381.1586398999207,
   "_model_source": "loaded:3fae8e50cfef"
 }

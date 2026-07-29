@@ -126,6 +126,28 @@ ruff check aegis && mypy aegis
 The core library (`import aegis`) needs only numpy/scipy/scikit-learn;
 LangGraph is an optional extra used solely by the integration and its demo.
 
+### Playground — try it in a browser
+
+```bash
+aegis-demo            # or: python -m aegis.demo   →  http://127.0.0.1:8000
+```
+
+A black-and-white console for poking at the guard: type an agent step (free text
+plus a proposed tool call), get back the verdict, sandbox tier, injection and
+anomaly scores, the reasoning, and the scrubbed content. Nine one-click scenarios
+reproduce the behaviours this README claims — benign traffic, an indirect
+injection in a retrieved doc, a payload hidden in tool arguments, Cyrillic
+homoglyph obfuscation, `exec_shell` exfiltration, an RBAC violation, a non-English
+override, a legitimate privileged action, and a precision check that must *not*
+block. Deep-link any of them with `/?s=<id>`.
+
+**Every verdict is computed by a real `AegisGateway` in the serving process** —
+nothing is precomputed and no detection logic is reimplemented in JavaScript, so
+the page cannot flatter the library. The scenario expectations are asserted in
+`tests/test_demo_server.py`, so a change that makes the playground misrepresent
+AEGIS fails the build. It is stdlib-only (no web framework) and binds loopback by
+default, since it submits attack strings to the guard.
+
 Individual benchmarks: `python -m harness.bench_injection` · `bench_toolguard` · `stress_sandbox` · `bench_concurrency`.
 
 ### Using AEGIS directly

@@ -63,6 +63,7 @@ class SanitizationPipeline:
             latency_ms=latency_ms,
             top_signals=signals[:4],
             method="ensemble(model+rules)",
+            rule_score=float(rule_score),
         )
 
     # ------------------------------------------------------------------ #

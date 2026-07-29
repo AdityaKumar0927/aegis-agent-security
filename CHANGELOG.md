@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-07
+
+### Fixed
+- **CI failed on Python 3.10** at the "verify shipped model loads" step. pip
+  resolves scikit-learn 1.7.x there (newer releases dropped 3.10), but the
+  artifact was pickled by 1.9.0, so the version-mismatch guard correctly rejected
+  it. The guard was right — the *format* was wrong.
+- **A false positive introduced by the ineffective-scrub rule.** Blocking any
+  sanitize-band content the scrubber couldn't clean also rejected ordinary
+  business prose scoring diffusely (0.36) with no injected line to remove. The
+  rule now keys on the **deterministic rule score**, not the fused score: a
+  high-precision rule still firing after scrubbing means a named attack pattern
+  is demonstrably present and unremovable (block); diffuse model suspicion with
+  nothing to redact is routed by risk, not blocked. `SanitizeResult.rule_score`
+  exposes this distinction to callers.
+- The playground's startup banner crashed on a default Windows cp1252 console
+  (a `→` in a `print`) — the same class of bug previously fixed in the harness,
+  now guarded by a test.
+
+### Changed
+- **The model artifact is a plain `.npz`, not a pickled estimator.** The model is
+  a logistic regression, so only its weights are stored. This makes it portable
+  across scikit-learn/numpy versions (the CI fix) and, more importantly, means
+  loading **cannot execute code** — `np.load(..., allow_pickle=False)` removes the
+  RCE sink that SECURITY.md previously had to warn about. Inference is now a dot
+  product plus a sigmoid; scikit-learn is a training-only dependency and `joblib`
+  is dropped entirely. Integrity manifest, dimension validation and fail-closed
+  behaviour are unchanged, plus new format-version and malformed-file checks.
+
+### Added
+- **`aegis-demo` — a black-and-white browser playground** (`python -m aegis.demo`).
+  Submit an agent step, see the real verdict, tier, scores, reasoning and scrubbed
+  content. Nine one-click scenarios reproduce the README's claims, deep-linkable
+  via `/?s=<id>`. Stdlib-only, loopback by default. Every verdict comes from a
+  live `AegisGateway` — no precomputed results, no detection logic in JavaScript —
+  and `tests/test_demo_server.py` asserts each scenario still behaves as labelled,
+  so the demo cannot drift into misrepresenting the library.
+
 ## [0.3.0] — 2026-07
 
 Closes four bypasses found by an adversarial red-team pass against 0.2.0 (each

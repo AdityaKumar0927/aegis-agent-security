@@ -171,18 +171,28 @@ class AegisGateway:
             # Re-inspect the cleaned content.
             recheck = self.sanitizer.inspect(sanitized_content, request.source)
 
-            # The scrub only succeeded if the cleaned content is no longer
-            # flagged.  Testing "did we remove a line?" is not enough: an
-            # attacker can pair a decoy line the scrubber does remove with the
-            # real injection it cannot, making scrub.modified True while the
-            # payload survives.  And the block-threshold recheck alone is dead
-            # code here - anything reaching this stage already scored below that
-            # threshold, so an identity scrub trivially passes it.  The honest
-            # test is whether the content still scores in the actionable band.
-            if recheck.score >= th_sanitize:
+            # Did the scrub actually neutralise the content?
+            #
+            # Testing "did we remove a line?" is not enough: an attacker can pair
+            # a decoy line the scrubber does remove with the real injection it
+            # cannot, leaving scrub.modified True while the payload survives.
+            # And the block-threshold recheck alone is dead code here - anything
+            # reaching this stage already scored below that threshold.
+            #
+            # The test that holds up is the *rule* score: rules are
+            # high-precision, so a rule still firing after scrubbing means a
+            # specific, named attack pattern is demonstrably still present and we
+            # would be handing the caller a live injection labelled as clean.
+            # A merely elevated *model* score with nothing removable is diffuse
+            # suspicion, not an identified injection - blocking on that would
+            # reject ordinary business prose that happens to share vocabulary
+            # with attacks.  Risk-based sandbox routing still applies there.
+            unsanitized = recheck.rule_score >= th_sanitize
+            if recheck.score >= self.config.thresholds.injection_block or unsanitized:
                 would_block = True
-                why = (f"content still flagged at {recheck.score:.2f} after scrubbing "
-                       f"{scrub.removed_count} line(s) -> cannot sanitize, block")
+                why = (f"identified injection still present after scrubbing "
+                       f"{scrub.removed_count} line(s) "
+                       f"(rule {recheck.rule_score:.2f}) -> cannot sanitize, block")
                 if self.enforce:
                     verdict = Verdict.BLOCK
                     reasons.append(why)

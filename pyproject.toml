@@ -54,20 +54,21 @@ Issues = "https://github.com/AdityaKumar0927/aegis-agent-security/issues"
 
 [project.scripts]
 aegis-train = "aegis.sanitizer.train:main"
+aegis-demo = "aegis.demo.server:main"
 
 [tool.setuptools]
 # Only the library ships; the benchmark 'harness' stays in the repo for dev and
 # is not installed as a top-level site-packages package.
 packages = [
     "aegis", "aegis.sanitizer", "aegis.scrubber", "aegis.monitor",
-    "aegis.sandbox", "aegis.integrations",
+    "aegis.sandbox", "aegis.integrations", "aegis.demo",
 ]
 
 [tool.setuptools.dynamic]
 version = { attr = "aegis.__version__" }
 
 [tool.setuptools.package-data]
-aegis = ["py.typed", "data/*.npz", "data/*.sha256"]
+aegis = ["py.typed", "data/*.npz", "data/*.sha256", "demo/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

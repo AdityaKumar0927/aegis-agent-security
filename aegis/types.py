@@ -169,6 +169,12 @@ class SanitizeResult:
     latency_ms: float
     top_signals: list[str] = field(default_factory=list)
     method: str = "ensemble"
+    # The deterministic-rule component of ``score``.  Rules are high-precision:
+    # a non-zero rule_score means a specific, named attack pattern was matched,
+    # as opposed to the model merely finding the phrasing diffusely suspicious.
+    # Callers that must distinguish "there is an identified injection here" from
+    # "this looks a bit odd" should branch on this, not on ``score``.
+    rule_score: float = 0.0
 
 
 @dataclass
