@@ -102,11 +102,20 @@ _MAL_PAYLOAD = re.compile(
     r"api\s*key|credentials?|password)\b"
     r"|\bdelete\s+(all\s+)?(the\s+)?files?\b"
     r"|\btransfer\s+\$?\d"
-    r"|\b(disable|bypass|turn\s+off)\b[\w\s]{0,20}?"
-    r"\b(safety|security|guardrails?|checks?|filters?|moderation)\b"
+    # Disabling *AI guardrails* specifically.  A bare "disable the safety check"
+    # is ordinary engineering/industrial language, so the object must name an
+    # actual guardrail concept - otherwise this fires on benign maintenance text.
+    r"|\b(disable|bypass|turn\s+off|switch\s+off)\b[\w\s]{0,25}?"
+    r"\b(guardrails?|moderation|content\s+polic\w*|safety\s+(guidelines?|filters?|"
+    r"systems?|protocols?|rules?|layers?)|security\s+(controls?|policies|policy)|"
+    r"safety\s+training|alignment)\b"
     r"|\bgrant\b[\w\s]{0,20}?\badmin(istrator)?\b"
     r"|\bapprove\b[\w\s]{0,20}?\b(wire|transfer|payment)\b"
-    r"|\bforward\s+(every|all)\b"
+    # Forwarding the *conversation* to a third party (the injection pattern),
+    # not ordinary business forwarding of invoices/documents.
+    r"|\bforward\s+(every|all)\b[\w\s]{0,25}?"
+    r"\b(message|messages|email|emails|conversation|conversations|chat|chats|"
+    r"reply|replies|response|responses|prompt|prompts)\b"
     r"|\bcurl\b[^\n]*\|\s*sh\b",
     re.IGNORECASE,
 )

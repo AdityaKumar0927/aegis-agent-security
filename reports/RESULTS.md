@@ -5,9 +5,9 @@ _All figures are produced by `python -m harness.run_all` on a synthetic, simulat
 ## 1. Indirect prompt-injection detection
 
 - Detection rate (act threshold 0.30): **99.8%**
-- False-positive rate: **0.00%**  ·  precision 100.0%
+- False-positive rate: **0.08%**  ·  precision 99.9%
 - AUC: **1.0000**  ·  test set: 2666 unseen-template samples
-- Latency: p50 **2.12 ms**, p95 3.92 ms, p99 7.46 ms (~422/s/thread)
+- Latency: p50 **2.31 ms**, p95 5.21 ms, p99 8.79 ms (~378/s/thread)
 
 Leave-one-family-out detection (never-seen attack technique):
 
@@ -16,7 +16,7 @@ Leave-one-family-out detection (never-seen attack technique):
 | direct_override | 100.0% |
 | fake_system | 100.0% |
 | fake_new_policy | 100.0% |
-| exfil | 73.2% |
+| exfil | 73.5% |
 | tool_hijack | 79.0% |
 | jailbreak | 100.0% |
 | delimiter | 100.0% |
@@ -33,7 +33,7 @@ Leave-one-family-out detection (never-seen attack technique):
 
 ## 3. Dynamic sandbox routing — exfiltration stress test
 
-- Requests processed: **5,200** at **205 req/s** (~17.7M/day)
+- Requests processed: **5,200** at **186 req/s** (~16.1M/day)
 - Exfiltration attempts: 1011
 - Data-exfiltration incidents WITH AEGIS: **0**
 - Would-leak WITHOUT AEGIS (baseline): 1011
@@ -42,5 +42,5 @@ Leave-one-family-out detection (never-seen attack technique):
 ## 4. Intent-scrubber optimisation
 
 - Peak memory: naive 2.8 MB → optimised 0.3 MB (**90% reduction**)
-- Single-thread throughput: **+1946%** (4,272 → 87,434 docs/s)
-- Concurrent throughput (8 workers): **+214%** (4,384 → 13,755 docs/s)
+- Single-thread throughput: **+1521%** (4,549 → 73,762 docs/s)
+- Concurrent throughput (8 workers): **+163%** (4,413 → 11,611 docs/s)

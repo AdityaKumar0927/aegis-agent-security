@@ -1,29 +1,29 @@
 {
   "injection": {
     "n_test": 2666,
-    "model_source": "loaded:494d7343ccd8",
-    "auc": 0.9999988744372891,
+    "model_source": "loaded:ee78b29e5a67",
+    "auc": 0.9999977488745779,
     "act_threshold": 0.3,
     "block_threshold": 0.8,
     "detection_at_act": 0.9977494373593399,
-    "fpr_at_act": 0.0,
-    "precision_at_act": 1.0,
-    "detection_at_block": 0.9789947486871718,
+    "fpr_at_act": 0.0007501875468867217,
+    "precision_at_act": 0.9992486851990984,
+    "detection_at_block": 0.9699924981245311,
     "fpr_at_block": 0.0,
     "precision_at_block": 1.0,
     "latency_ms": {
-      "mean": 2.3701843963771783,
-      "p50": 2.116300049237907,
-      "p95": 3.9208999660331756,
-      "p99": 7.456514996010803,
-      "max": 23.802900104783475
+      "mean": 2.647454764177661,
+      "p50": 2.305449976120144,
+      "p95": 5.213049909798428,
+      "p99": 8.790770027553656,
+      "max": 24.331800057552755
     },
-    "throughput_per_s_1thread": 421.9081019723604,
+    "throughput_per_s_1thread": 377.7212791435985,
     "lofo": {
       "direct_override": 1.0,
       "fake_system": 1.0,
       "fake_new_policy": 1.0,
-      "exfil": 0.7325,
+      "exfil": 0.735,
       "tool_hijack": 0.79,
       "jailbreak": 1.0,
       "delimiter": 1.0,
@@ -36,8 +36,8 @@
     "n": 6000,
     "attack_ratio": 0.4,
     "authorized_total": 3616,
-    "authorized_executed": 3598,
-    "utility": 0.9950221238938053,
+    "authorized_executed": 3599,
+    "utility": 0.9952986725663717,
     "unauthorized_total": 2384,
     "unauthorized_executed_baseline": 2384,
     "unauthorized_executed_protected": 0,
@@ -45,7 +45,7 @@
     "reduction_vs_baseline": 1.0,
     "by_kind": {
       "benign": {
-        "executed": 3598,
+        "executed": 3599,
         "total": 3616
       },
       "rbac_violation": {
@@ -76,31 +76,31 @@
     "exfil_leaks_protected": 0,
     "exfil_leaks_unprotected_baseline": 1011,
     "exfil_attempts_blocked": 528,
-    "throughput_req_per_s": 205.26777425950877,
-    "projected_daily_capacity": 17735135.696021557,
+    "throughput_req_per_s": 186.32695469398485,
+    "projected_daily_capacity": 16098648.88556029,
     "tier_distribution": {
       "restricted": 892,
       "read_only": 1709,
       "trusted": 560,
       "no_net": 2
     },
-    "protected_wall_s": 25.33276359993033
+    "protected_wall_s": 27.907932100002654
   },
   "concurrency": {
     "n_docs": 20000,
     "workers": 8,
-    "naive_peak_mem_mb": 2.750396,
-    "opt_peak_mem_mb": 0.279434,
-    "mem_reduction": 0.8984022664372694,
-    "naive_throughput": 4272.404038145101,
-    "opt_throughput": 87433.98735346195,
-    "throughput_gain": 19.464821812925287,
-    "naive_concurrent_throughput": 4384.450449964679,
-    "opt_concurrent_throughput": 13754.870599436623,
-    "concurrency_gain": 2.1371937615459724,
-    "naive_mem_per_1k": 0.1375198,
-    "opt_mem_per_1k": 0.0139717
+    "naive_peak_mem_mb": 2.753601,
+    "opt_peak_mem_mb": 0.27802,
+    "mem_reduction": 0.899034028532093,
+    "naive_throughput": 4549.420709834277,
+    "opt_throughput": 73761.54368200572,
+    "throughput_gain": 15.21339251447085,
+    "naive_concurrent_throughput": 4413.4108107972315,
+    "opt_concurrent_throughput": 11611.490219957872,
+    "concurrency_gain": 1.6309561284326466,
+    "naive_mem_per_1k": 0.13768005,
+    "opt_mem_per_1k": 0.013901
   },
-  "_wall_seconds": 148.66581489995588,
-  "_model_source": "loaded:494d7343ccd8"
+  "_wall_seconds": 156.14859320002142,
+  "_model_source": "loaded:ee78b29e5a67"
 }

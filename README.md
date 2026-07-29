@@ -12,7 +12,7 @@ All numbers below are **freshly measured** by `python -m harness.run_all` on a s
 
 | Capability | Metric | Result |
 |---|---|---|
-| **Indirect prompt-injection detection** | detection rate @ 0.00% FPR | **99.8%** (AUC 1.000) |
+| **Indirect prompt-injection detection** | detection rate @ 0.08% FPR | **99.8%** (AUC 1.000) |
 | | inference latency (p50) | **~2 ms** on CPU |
 | **Unauthorized tool-execution control** | reduction vs. no-enforcement | **100%** (2384 → 0) |
 | | utility retained on legitimate traffic | **99.5%** |
