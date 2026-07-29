@@ -48,10 +48,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Verify shipped model loads (integrity + format + dimension)
-        run: python -c "from aegis.sanitizer.classifier import InjectionClassifier as C; c=C(); c.load_model(C._model_path()); print('model ok', c.n_features)"
-      - name: Verify the shipped model is used, not silently retrained
-        run: python -c "from aegis.sanitizer import SanitizationPipeline as P; s=P.default().model_source; print('model source:', s); assert s.startswith('loaded:'), 'fell back to retraining: '+s"
+      # A script file, not an inline `python -c`: inline commands have to survive
+      # YAML quoting *and* two different shells (bash on Linux, pwsh on Windows),
+      # and a stale/mis-quoted one-liner has broken this matrix before.
+      - name: Verify shipped model (integrity, format, no silent retrain)
+        run: python scripts/verify_model.py
       - name: Test
         run: pytest -q --cov=aegis --cov-report=term-missing
 
